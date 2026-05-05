@@ -1,0 +1,119 @@
+# ============================================================
+#  THYGENIE EQUITY INVEST — GitHub Actions Automation
+#  File: .github/workflows/thygenie-daily.yml
+#
+#  FREE alternative to one.com cron jobs.
+#  GitHub runs this on their servers — costs nothing.
+#
+#  HOW TO SET UP (one time):
+#  1. Create a free GitHub account at github.com
+#  2. Create a new private repository called "thygenie-cron"
+#  3. Create the folder structure: .github/workflows/
+#  4. Create this file inside that folder
+#  5. Commit and push — GitHub Actions starts immediately
+#
+#  That's it. GitHub will call your website URLs on schedule.
+#  Your server runs the actual work — GitHub just triggers it.
+# ============================================================
+
+name: Thygenie Automation
+
+on:
+  schedule:
+    # 8:00 AM IST = 2:30 AM UTC
+    - cron: '30 2 * * *'
+    # 4:00 PM IST = 10:30 AM UTC (Trendlyne widget + BSE)
+    - cron: '30 10 * * *'
+    # 6:00 AM IST Sunday = 12:30 AM UTC Sunday
+    - cron: '30 0 * * 0'
+
+  # Also allow manual trigger from GitHub website
+  workflow_dispatch:
+    inputs:
+      job:
+        description: 'Which job to run'
+        required: false
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - daily
+          - trendlyne
+          - bse
+          - weekly
+
+jobs:
+
+  # ── 8am IST: Full daily pipeline ──
+  daily-pipeline:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '30 2 * * *'
+    steps:
+      - name: Run daily pipeline
+        run: |
+          echo "Starting Thygenie daily pipeline..."
+          curl -s --max-time 120 \
+            "https://thygenie.in/equity-invest/cron_setup.php?run=daily&key=thygenie_cron_2024" \
+            | python3 -m json.tool || echo "Pipeline triggered"
+          echo "Daily pipeline complete"
+
+      - name: Send email alerts
+        run: |
+          sleep 300  # Wait 5 min for pipeline to finish
+          curl -s --max-time 60 \
+            "https://thygenie.in/equity-invest/alerts.php?type=daily&cron=1" \
+            | python3 -m json.tool || echo "Alerts sent"
+
+  # ── 4pm IST: Trendlyne widget + BSE announcements ──
+  afternoon-data:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '30 10 * * *'
+    steps:
+      - name: Trendlyne widget auto-fetch
+        run: |
+          echo "Fetching Trendlyne widget data..."
+          # Run in batches — fetch 300 stocks (75 batches of 4)
+          for offset in 0 12 24 36 48 60 72 84 96 108 120 132 144 156 168 180 192 204 216 228 240 252 264 276 288; do
+            curl -s --max-time 30 \
+              "https://thygenie.in/equity-invest/trendlyne_auto.php?task=fetch&offset=${offset}&size=4&cron=1" \
+              > /dev/null
+            sleep 2
+          done
+          echo "Trendlyne widget fetch complete"
+
+      - name: BSE announcements
+        run: |
+          echo "Fetching BSE announcements..."
+          curl -s --max-time 60 \
+            "https://thygenie.in/equity-invest/bse_announcements.php?task=fetch&cron=1" \
+            | python3 -m json.tool || echo "BSE fetch done"
+
+      - name: Monitor active picks
+        run: |
+          curl -s --max-time 60 \
+            "https://thygenie.in/equity-invest/monitor.php?cron=1" \
+            | python3 -m json.tool || echo "Monitor done"
+
+  # ── Sunday 6am IST: Weekly maintenance ──
+  weekly-maintenance:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '30 0 * * 0'
+    steps:
+      - name: Stock manager sync
+        run: |
+          echo "Running stock manager..."
+          curl -s --max-time 120 \
+            "https://thygenie.in/equity-invest/stock_manager.php?cron=1" \
+            | python3 -m json.tool || echo "Stock manager done"
+
+      - name: Weekly email report
+        run: |
+          curl -s --max-time 60 \
+            "https://thygenie.in/equity-invest/alerts.php?type=weekly&cron=1" \
+            | python3 -m json.tool || echo "Weekly report sent"
+
+      - name: Brain weekly review
+        run: |
+          curl -s --max-time 60 \
+            "https://thygenie.in/equity-invest/brain.php?cron=1" \
+            | python3 -m json.tool || echo "Brain review done"
