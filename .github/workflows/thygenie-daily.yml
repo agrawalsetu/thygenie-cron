@@ -15,9 +15,9 @@
 #  That's it. GitHub will call your website URLs on schedule.
 #  Your server runs the actual work — GitHub just triggers it.
 # ============================================================
-
+ 
 name: Thygenie Automation
-
+ 
 on:
   schedule:
     # 8:00 AM IST = 2:30 AM UTC
@@ -26,7 +26,7 @@ on:
     - cron: '30 10 * * *'
     # 6:00 AM IST Sunday = 12:30 AM UTC Sunday
     - cron: '30 0 * * 0'
-
+ 
   # Also allow manual trigger from GitHub website
   workflow_dispatch:
     inputs:
@@ -41,9 +41,9 @@ on:
           - trendlyne
           - bse
           - weekly
-
+ 
 jobs:
-
+ 
   # ── 8am IST: Full daily pipeline ──
   daily-pipeline:
     runs-on: ubuntu-latest
@@ -56,14 +56,14 @@ jobs:
             "https://thygenie.in/equity-invest/cron_setup.php?run=daily&key=thygenie_cron_2024" \
             | python3 -m json.tool || echo "Pipeline triggered"
           echo "Daily pipeline complete"
-
+ 
       - name: Send email alerts
         run: |
           sleep 300  # Wait 5 min for pipeline to finish
           curl -s --max-time 60 \
             "https://thygenie.in/equity-invest/alerts.php?type=daily&cron=1" \
             | python3 -m json.tool || echo "Alerts sent"
-
+ 
   # ── 4pm IST: Trendlyne widget + BSE announcements ──
   afternoon-data:
     runs-on: ubuntu-latest
@@ -80,20 +80,20 @@ jobs:
             sleep 2
           done
           echo "Trendlyne widget fetch complete"
-
+ 
       - name: BSE announcements
         run: |
           echo "Fetching BSE announcements..."
           curl -s --max-time 60 \
             "https://thygenie.in/equity-invest/bse_announcements.php?task=fetch&cron=1" \
             | python3 -m json.tool || echo "BSE fetch done"
-
+ 
       - name: Monitor active picks
         run: |
           curl -s --max-time 60 \
             "https://thygenie.in/equity-invest/monitor.php?cron=1" \
             | python3 -m json.tool || echo "Monitor done"
-
+ 
   # ── Sunday 6am IST: Weekly maintenance ──
   weekly-maintenance:
     runs-on: ubuntu-latest
@@ -105,13 +105,13 @@ jobs:
           curl -s --max-time 120 \
             "https://thygenie.in/equity-invest/stock_manager.php?cron=1" \
             | python3 -m json.tool || echo "Stock manager done"
-
+ 
       - name: Weekly email report
         run: |
           curl -s --max-time 60 \
             "https://thygenie.in/equity-invest/alerts.php?type=weekly&cron=1" \
             | python3 -m json.tool || echo "Weekly report sent"
-
+ 
       - name: Brain weekly review
         run: |
           curl -s --max-time 60 \
