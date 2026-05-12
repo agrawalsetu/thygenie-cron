@@ -26,11 +26,13 @@ name: Thygenie Automation
 
 on:
   schedule:
-    # 10:00 AM IST = 4:30 AM UTC
+    # 9:30 AM IST = 4:00 AM UTC (sentiment — after prices settle)
+    - cron: '0 4 * * *'
+    # 10:00 AM IST = 4:30 AM UTC (analyst refresh)
     - cron: '30 4 * * *'
-    # 4:00 PM IST = 10:30 AM UTC
+    # 4:00 PM IST = 10:30 AM UTC (data gather)
     - cron: '30 10 * * *'
-    # 5:00 PM IST = 11:30 AM UTC
+    # 5:00 PM IST = 11:30 AM UTC (evening pipeline)
     - cron: '30 11 * * *'
     # 6:00 AM IST Sunday = 12:30 AM UTC Sunday
     - cron: '30 0 * * 0'
@@ -45,6 +47,7 @@ on:
         type: choice
         options:
           - all
+          - sentiment
           - analyst
           - data-gather
           - evening
@@ -52,6 +55,22 @@ on:
           - backtest
 
 jobs:
+
+  # ── 9:30am IST: Sentiment scraper (Reddit + RSS) ──
+  sentiment-scraper:
+    runs-on: ubuntu-latest
+    if: |
+      (github.event_name == 'workflow_dispatch' && (github.event.inputs.job == 'all' || github.event.inputs.job == 'sentiment')) ||
+      github.event.schedule == '0 4 * * *'
+    steps:
+      - name: Scrape Reddit + RSS sentiment
+        run: |
+          echo "Running sentiment scraper (9:30 AM IST)..."
+          RESULT=$(curl -s --max-time 180 \
+            "https://thygenie.in/equity-invest/cron_setup.php?run=sentiment&key=thygenie_cron_2024" \
+            2>/dev/null || echo '{"success":false,"error":"curl_failed"}')
+          echo "$RESULT" | python3 -m json.tool 2>/dev/null || echo "$RESULT"
+          echo "Sentiment scrape complete"
 
   # ── 10am IST: Analyst recommendations refresh ──
   analyst-refresh:
