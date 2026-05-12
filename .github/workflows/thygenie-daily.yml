@@ -76,7 +76,7 @@ jobs:
       (github.event_name == 'workflow_dispatch' && github.event.inputs.job == 'etl')
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Process Trendlyne CSV and import to server
         run: |
