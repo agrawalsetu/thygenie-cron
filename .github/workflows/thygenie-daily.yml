@@ -37,6 +37,13 @@ on:
     # 6:00 AM IST Sunday = 12:30 AM UTC Sunday
     - cron: '30 0 * * 0'
 
+  # ETL relay: triggers when a Trendlyne CSV is pushed to the data/ directory.
+  # Workflow: download CSV from Trendlyne in browser → git push to data/ → this runs.
+  push:
+    paths:
+      - 'data/**.csv'
+      - 'data/**.txt'
+
   # Also allow manual trigger from GitHub website
   workflow_dispatch:
     inputs:
@@ -53,8 +60,36 @@ on:
           - evening
           - weekly
           - backtest
+          - etl
 
 jobs:
+
+  # ── ETL Relay: Trendlyne CSV push → Python → server import ──
+  # Runs on CSV push. The Python script reads the committed CSV,
+  # converts to JSON, and POSTs to trendlyne_fetcher.php?task=import_json.
+  # This is the "GitHub as distributed compute" pattern — Python does
+  # the parsing and batching; the $5/month server only handles persistence.
+  trendlyne-etl:
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'push' ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.job == 'etl')
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Process Trendlyne CSV and import to server
+        run: |
+          echo "Trendlyne ETL relay starting..."
+          python3 .github/scripts/process_trendlyne.py
+          echo "ETL relay complete"
+
+      - name: Trigger candidate refresh after import
+        run: |
+          echo "Refreshing candidate pre-filter after data import..."
+          curl -s --max-time 120 \
+            "https://thygenie.in/equity-invest/candidate_refresh.php?cron=1" \
+            | python3 -m json.tool || echo "Candidate refresh done"
 
   # ── 9:30am IST: Sentiment scraper (Reddit + RSS) ──
   sentiment-scraper:
@@ -142,6 +177,27 @@ jobs:
       (github.event_name == 'workflow_dispatch' && (github.event.inputs.job == 'all' || github.event.inputs.job == 'evening' || github.event.inputs.job == 'backtest')) ||
       github.event.schedule == '30 11 * * *'
     steps:
+      - name: Candidate pre-filter refresh
+        run: |
+          echo "Refreshing candidate pre-filter (reduces ~2,366→~700 stocks for scoring)..."
+          curl -s --max-time 120 \
+            "https://thygenie.in/equity-invest/candidate_refresh.php?cron=1" \
+            | python3 -m json.tool || echo "Candidate refresh done"
+
+      - name: Sector rotation update
+        run: |
+          echo "Updating sector smart money flow..."
+          curl -s --max-time 60 \
+            "https://thygenie.in/equity-invest/sector_rotation_update.php?cron=1" \
+            | python3 -m json.tool || echo "Sector rotation done"
+
+      - name: Livemint earnings commentary
+        run: |
+          echo "Fetching Livemint earnings commentary (requires subscription cookie)..."
+          curl -s --max-time 120 \
+            "https://thygenie.in/equity-invest/mint_fetcher.php?cron=1" \
+            | python3 -m json.tool || echo "Mint fetcher done (cookie may not be set)"
+
       - name: Full daily pipeline (prices + scoring + recommendations + brain)
         id: daily
         run: |
