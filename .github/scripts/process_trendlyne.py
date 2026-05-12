@@ -32,16 +32,16 @@ ENDPOINT  = f"{SITE_URL}/trendlyne_fetcher.php"
 BATCH_SZ  = 500   # rows per POST — keeps request body under ~500KB
 
 
-def find_csv():
-    """Return path to the most recently modified CSV in data/."""
-    patterns = ["data/trendlyne_*.csv", "data/*.csv"]
-    for pattern in patterns:
-        files = glob.glob(pattern)
-        if files:
-            return max(files, key=os.path.getmtime)
-    # Also check repo root for convenience
-    root_csvs = glob.glob("*.csv")
-    return max(root_csvs, key=os.path.getmtime) if root_csvs else None
+def find_csvs():
+    """Return all CSV paths in data/, sorted oldest-first so financials import before DVM."""
+    seen = set()
+    results = []
+    for pattern in ["data/trendlyne_*.csv", "data/*.csv", "*.csv"]:
+        for f in glob.glob(pattern):
+            if f not in seen:
+                seen.add(f)
+                results.append(f)
+    return sorted(results, key=os.path.getmtime)
 
 
 def parse_csv(path):
@@ -70,30 +70,22 @@ def post_batch(rows, task="import_json"):
         return json.loads(resp.read().decode("utf-8"))
 
 
-def main():
-    csv_path = find_csv()
-    if not csv_path:
-        event = os.environ.get("GITHUB_EVENT_NAME", "push")
-        if event == "workflow_dispatch":
-            print("ERROR: No CSV found. Commit a file to data/trendlyne_*.csv first.")
-            sys.exit(1)
-        else:
-            print("No CSV found in data/ — skipping ETL (push did not include a CSV)")
-            sys.exit(0)
-
+def process_one(csv_path):
+    """Process a single CSV file. Returns True on success."""
+    print(f"\n{'='*60}")
     print(f"CSV file : {csv_path}")
     rows = parse_csv(csv_path)
     print(f"Rows     : {len(rows)}")
     if not rows:
-        print("ERROR: CSV parsed to 0 rows — check delimiter or encoding")
-        sys.exit(1)
+        print("WARNING: CSV parsed to 0 rows — skipping (check delimiter or encoding)")
+        return True
 
-    # Show first 3 headers for debug
     headers = list(rows[0].keys())
-    print(f"Headers  : {', '.join(headers[:6])}{'...' if len(headers) > 6 else ''}")
+    print(f"Headers  : {', '.join(headers[:8])}{'...' if len(headers) > 8 else ''}")
 
-    totals      = {"matched": 0, "unmatched": 0, "fund_saved": 0, "anal_saved": 0, "tech_saved": 0}
+    totals        = {"matched": 0, "unmatched": 0, "fund_saved": 0, "anal_saved": 0, "tech_saved": 0}
     total_batches = (len(rows) + BATCH_SZ - 1) // BATCH_SZ
+    file_type     = None
 
     for idx in range(0, len(rows), BATCH_SZ):
         batch     = rows[idx : idx + BATCH_SZ]
@@ -103,6 +95,8 @@ def main():
             result = post_batch(batch)
             for k in totals:
                 totals[k] += result.get(k, 0)
+            if file_type is None:
+                file_type = result.get("file_type", "unknown")
             print(
                 f"matched={result.get('matched',0)} "
                 f"fund={result.get('fund_saved',0)} "
@@ -114,23 +108,43 @@ def main():
         except urllib.error.HTTPError as e:
             body = e.read().decode("utf-8", errors="replace")[:300]
             print(f"HTTP {e.code}: {body}")
-            sys.exit(1)
+            return False
         except Exception as e:
             print(f"ERROR: {e}")
-            sys.exit(1)
+            return False
 
-        # Brief pause between batches to avoid overwhelming shared hosting
         if idx + BATCH_SZ < len(rows):
             time.sleep(2)
 
     print(
-        f"\nComplete: matched={totals['matched']} "
+        f"\nComplete [{file_type}]: matched={totals['matched']} "
         f"fund_saved={totals['fund_saved']} "
         f"anal_saved={totals['anal_saved']} "
         f"tech_saved={totals['tech_saved']}"
     )
+    if file_type == "unknown":
+        print(f"  NOTE: File type unrecognised — no data saved. First 8 headers above.")
     if totals["unmatched"] > 0:
-        print(f"Unmatched (no stock found): {totals['unmatched']} rows")
+        print(f"  Unmatched (no stock found): {totals['unmatched']} rows")
+    return True
+
+
+def main():
+    csv_paths = find_csvs()
+    if not csv_paths:
+        event = os.environ.get("GITHUB_EVENT_NAME", "push")
+        if event == "workflow_dispatch":
+            print("ERROR: No CSV found. Commit a file to data/trendlyne_*.csv first.")
+            sys.exit(1)
+        else:
+            print("No CSV found in data/ — skipping ETL (push did not include a CSV)")
+            sys.exit(0)
+
+    print(f"Found {len(csv_paths)} CSV file(s) to process")
+    for path in csv_paths:
+        ok = process_one(path)
+        if not ok:
+            sys.exit(1)
 
 
 if __name__ == "__main__":
