@@ -205,12 +205,12 @@ jobs:
             "https://thygenie.in/equity-invest/stock_manager.php?cron=1&mode=daily" \
             | python3 -m json.tool || echo "Maintenance done"
 
-      - name: Fetch prices for all stocks
+      - name: Fetch prices for candidates + active recommendations
         run: |
-          echo "Fetching prices (2,366 stocks in batches of 50)..."
-          for offset in $(seq 0 50 2400); do
+          echo "Fetching prices (candidates + active recs, batches of 50)..."
+          for offset in $(seq 0 50 2000); do
             curl -s --max-time 60 \
-              "https://thygenie.in/equity-invest/data_worker.php?batch=1&offset=${offset}&size=50&cron=1" \
+              "https://thygenie.in/equity-invest/data_worker.php?batch=1&candidates_only=1&offset=${offset}&size=50&cron=1" \
               > /dev/null
             sleep 1
           done
