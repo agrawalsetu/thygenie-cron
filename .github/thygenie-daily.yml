@@ -1,0 +1,292 @@
+# ============================================================
+#  THYGENIE EQUITY INVEST — GitHub Actions Automation
+#  File: .github/workflows/thygenie-daily.yml
+#
+#  FREE alternative to one.com cron jobs.
+#  GitHub runs this on their servers — costs nothing.
+#
+#  HOW TO SET UP (one time):
+#  1. Create a free GitHub account at github.com
+#  2. Create a new private repository called "thygenie-cron"
+#  3. Create the folder structure: .github/workflows/
+#  4. Create this file inside that folder
+#  5. Commit and push — GitHub Actions starts immediately
+#
+#  That's it. GitHub will call your website URLs on schedule.
+#  Your server runs the actual work — GitHub just triggers it.
+#
+#  TIMING (IST):
+#   10:00 AM — analyst-refresh   (tickertape recommendations)
+#    4:00 PM — data-gather        (Trendlyne + BSE + institutional + monitor)
+#    5:00 PM — evening-pipeline   (prices → scoring → recs → brain → backtest → alerts)
+#   Sun 6 AM — weekly-maintenance (stock sync + weekly email)
+# ============================================================
+
+name: Thygenie Automation
+
+on:
+  schedule:
+    # 9:30 AM IST = 4:00 AM UTC (sentiment — after prices settle)
+    - cron: '0 4 * * *'
+    # 10:00 AM IST = 4:30 AM UTC (analyst refresh)
+    - cron: '30 4 * * *'
+    # 4:00 PM IST = 10:30 AM UTC (data gather)
+    - cron: '30 10 * * *'
+    # 5:00 PM IST = 11:30 AM UTC (evening pipeline)
+    - cron: '30 11 * * *'
+    # 6:00 AM IST Sunday = 12:30 AM UTC Sunday
+    - cron: '30 0 * * 0'
+
+  # ETL relay: triggers when a Trendlyne CSV is pushed to the data/ directory.
+  # Workflow: download CSV from Trendlyne in browser → git push to data/ → this runs.
+  push:
+    paths:
+      - 'data/**.csv'
+      - 'data/**.txt'
+
+  # Also allow manual trigger from GitHub website
+  workflow_dispatch:
+    inputs:
+      job:
+        description: 'Which job to run'
+        required: false
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - sentiment
+          - analyst
+          - data-gather
+          - evening
+          - weekly
+          - backtest
+          - etl
+
+jobs:
+
+  # ── ETL Relay: Trendlyne CSV push → Python → server import ──
+  # Runs on CSV push. The Python script reads the committed CSV,
+  # converts to JSON, and POSTs to trendlyne_fetcher.php?task=import_json.
+  # This is the "GitHub as distributed compute" pattern — Python does
+  # the parsing and batching; the $5/month server only handles persistence.
+  trendlyne-etl:
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'push' ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.job == 'etl')
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Process Trendlyne CSV and import to server
+        run: |
+          echo "Trendlyne ETL relay starting..."
+          python3 .github/scripts/process_trendlyne.py
+          echo "ETL relay complete"
+
+      - name: Trigger candidate refresh after import
+        run: |
+          echo "Refreshing candidate pre-filter after data import..."
+          curl -s --max-time 120 \
+            "https://thygenie.in/equity-invest/candidate_refresh.php?cron=1" \
+            | python3 -m json.tool || echo "Candidate refresh done"
+
+  # ── 9:30am IST: Sentiment scraper (Reddit + RSS) ──
+  sentiment-scraper:
+    runs-on: ubuntu-latest
+    if: |
+      (github.event_name == 'workflow_dispatch' && (github.event.inputs.job == 'all' || github.event.inputs.job == 'sentiment')) ||
+      github.event.schedule == '0 4 * * *'
+    steps:
+      - name: Scrape Reddit + RSS sentiment
+        run: |
+          echo "Running sentiment scraper (9:30 AM IST)..."
+          RESULT=$(curl -s --max-time 180 \
+            "https://thygenie.in/equity-invest/cron_setup.php?run=sentiment&key=thygenie_cron_2024" \
+            2>/dev/null || echo '{"success":false,"error":"curl_failed"}')
+          echo "$RESULT" | python3 -m json.tool 2>/dev/null || echo "$RESULT"
+          echo "Sentiment scrape complete"
+
+  # ── 10am IST: Analyst recommendations refresh ──
+  analyst-refresh:
+    runs-on: ubuntu-latest
+    if: |
+      (github.event_name == 'workflow_dispatch' && (github.event.inputs.job == 'all' || github.event.inputs.job == 'analyst')) ||
+      github.event.schedule == '30 4 * * *'
+    steps:
+      - name: Fetch analyst recommendations
+        run: |
+          echo "Fetching analyst recommendations (10am IST)..."
+          RESULT=$(curl -s --max-time 120 \
+            "https://thygenie.in/equity-invest/cron_setup.php?run=analyst&key=thygenie_cron_2024" \
+            2>/dev/null || echo '{"success":false,"error":"curl_failed"}')
+          echo "$RESULT" | python3 -m json.tool 2>/dev/null || echo "$RESULT"
+          # Alert on failure
+          SUCCESS=$(echo "$RESULT" | python3 -c "import sys,json; d=json.load(sys.stdin); print('true' if d.get('success') else 'false')" 2>/dev/null || echo "false")
+          if [ "$SUCCESS" = "false" ]; then
+            curl -s --max-time 30 \
+              "https://thygenie.in/equity-invest/alerts.php?type=failure&step=analyst_refresh&message=Analyst+refresh+failed&cron=1" \
+              > /dev/null
+            echo "Analyst refresh failed — failure alert sent"
+            exit 1
+          fi
+          echo "Analyst refresh complete"
+
+  # ── 4pm IST: Data gather (Trendlyne + BSE + institutional + monitor) ──
+  data-gather:
+    runs-on: ubuntu-latest
+    if: |
+      (github.event_name == 'workflow_dispatch' && (github.event.inputs.job == 'all' || github.event.inputs.job == 'data-gather')) ||
+      github.event.schedule == '30 10 * * *'
+    steps:
+      - name: Trendlyne widget auto-fetch
+        run: |
+          echo "Fetching Trendlyne widget data..."
+          for offset in 0 12 24 36 48 60 72 84 96 108 120 132 144 156 168 180 192 204 216 228 240 252 264 276 288; do
+            curl -s --max-time 30 \
+              "https://thygenie.in/equity-invest/trendlyne_auto.php?task=fetch&offset=${offset}&size=4&cron=1" \
+              > /dev/null
+            sleep 2
+          done
+          echo "Trendlyne widget fetch complete"
+
+      - name: BSE announcements
+        run: |
+          echo "Fetching BSE announcements..."
+          curl -s --max-time 60 \
+            "https://thygenie.in/equity-invest/bse_announcements.php?task=fetch&cron=1" \
+            | python3 -m json.tool || echo "BSE fetch done"
+
+      - name: Institutional holdings update
+        run: |
+          echo "Fetching institutional holdings..."
+          curl -s --max-time 90 \
+            "https://thygenie.in/equity-invest/trendlyne_fetcher.php?task=institutional&cron=1" \
+            | python3 -m json.tool || echo "Institutional fetch done"
+
+      - name: Monitor active picks
+        run: |
+          curl -s --max-time 60 \
+            "https://thygenie.in/equity-invest/monitor.php?cron=1" \
+            | python3 -m json.tool || echo "Monitor done"
+
+  # ── 5pm IST: Evening pipeline — prices → scoring → recs → brain → backtest → alerts ──
+  evening-pipeline:
+    runs-on: ubuntu-latest
+    if: |
+      (github.event_name == 'workflow_dispatch' && (github.event.inputs.job == 'all' || github.event.inputs.job == 'evening' || github.event.inputs.job == 'backtest')) ||
+      github.event.schedule == '30 11 * * *'
+    steps:
+      - name: Candidate pre-filter refresh
+        run: |
+          echo "Refreshing candidate pre-filter (reduces ~2,366→~700 stocks for scoring)..."
+          curl -s --max-time 120 \
+            "https://thygenie.in/equity-invest/candidate_refresh.php?cron=1" \
+            | python3 -m json.tool || echo "Candidate refresh done"
+
+      - name: Sector rotation update
+        run: |
+          echo "Updating sector smart money flow..."
+          curl -s --max-time 60 \
+            "https://thygenie.in/equity-invest/sector_rotation_update.php?cron=1" \
+            | python3 -m json.tool || echo "Sector rotation done"
+
+      - name: Livemint earnings commentary
+        run: |
+          echo "Fetching Livemint earnings commentary (requires subscription cookie)..."
+          curl -s --max-time 120 \
+            "https://thygenie.in/equity-invest/mint_fetcher.php?cron=1" \
+            | python3 -m json.tool || echo "Mint fetcher done (cookie may not be set)"
+
+      - name: Full daily pipeline (prices + scoring + recommendations + brain)
+        id: daily
+        run: |
+          echo "Running evening pipeline (5pm IST)..."
+          RESULT=$(curl -s --max-time 300 \
+            "https://thygenie.in/equity-invest/cron_setup.php?run=daily&key=thygenie_cron_2024" \
+            2>/dev/null || echo '{"success":false,"error":"curl_timeout"}')
+          echo "$RESULT" | python3 -m json.tool 2>/dev/null || echo "$RESULT"
+          # Collect names of any sub-steps that failed (success=false in their dict)
+          FAIL=$(echo "$RESULT" | python3 -c "import sys,json; d=json.load(sys.stdin); print(','.join([k for k,v in d.items() if isinstance(v,dict) and v.get('success')==False]))" 2>/dev/null || echo "parse_error")
+          echo "FAIL_STEPS=$FAIL" >> $GITHUB_ENV
+          if [ -n "$FAIL" ]; then
+            echo "Pipeline failures: $FAIL"
+          else
+            echo "Pipeline completed successfully"
+          fi
+
+      - name: Alert on pipeline failures
+        if: env.FAIL_STEPS != ''
+        run: |
+          for STEP in $(echo "$FAIL_STEPS" | tr ',' ' '); do
+            curl -s --max-time 30 \
+              "https://thygenie.in/equity-invest/alerts.php?type=failure&step=${STEP}&message=Step+failed+in+daily+pipeline&cron=1" \
+              > /dev/null
+            echo "Failure alert sent for: $STEP"
+          done
+
+      - name: Rolling backtest (next untested period)
+        run: |
+          echo "Finding next untested backtest period..."
+          PERIOD=$(curl -s --max-time 30 \
+            "https://thygenie.in/equity-invest/backtest.php?task=next_period&cron=1" \
+            | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('period_start') or '')" \
+            2>/dev/null || echo "")
+          if [ -z "$PERIOD" ]; then
+            echo "Backtest up to date — no new periods to test"
+          else
+            echo "Testing period: $PERIOD"
+            for SEG in large mid small; do
+              echo "  Running segment: $SEG"
+              curl -s --max-time 180 \
+                "https://thygenie.in/equity-invest/backtest.php?task=run&start=${PERIOD}&segment=${SEG}&size=9999&cron=1" \
+                | python3 -m json.tool || echo "  Segment ${SEG} done"
+              sleep 5
+            done
+            echo "Rolling backtest complete for $PERIOD"
+          fi
+
+      - name: Health check
+        run: |
+          echo "Running health check..."
+          HEALTH=$(curl -s --max-time 30 \
+            "https://thygenie.in/equity-invest/cron_setup.php?run=health&key=thygenie_cron_2024" \
+            2>/dev/null || echo '{"healthy":false,"issues":["health_endpoint_unreachable"]}')
+          echo "$HEALTH" | python3 -m json.tool 2>/dev/null || echo "$HEALTH"
+          HEALTHY=$(echo "$HEALTH" | python3 -c "import sys,json; d=json.load(sys.stdin); print('true' if d.get('healthy') else 'false')" 2>/dev/null || echo "false")
+          if [ "$HEALTHY" = "false" ]; then
+            ISSUES=$(echo "$HEALTH" | python3 -c "import sys,json; d=json.load(sys.stdin); print('+'.join(d.get('issues',['unknown'])))" 2>/dev/null || echo "unknown")
+            curl -s --max-time 30 \
+              "https://thygenie.in/equity-invest/alerts.php?type=failure&step=health_check&message=${ISSUES}&cron=1" \
+              > /dev/null
+            echo "Health issues detected: $ISSUES — alert sent"
+          else
+            echo "System healthy"
+          fi
+
+      - name: Send daily email
+        run: |
+          echo "Sending daily email summary..."
+          curl -s --max-time 60 \
+            "https://thygenie.in/equity-invest/alerts.php?type=daily&cron=1" \
+            | python3 -m json.tool || echo "Daily email sent"
+
+  # ── Sunday 6am IST: Weekly maintenance ──
+  weekly-maintenance:
+    runs-on: ubuntu-latest
+    if: |
+      (github.event_name == 'workflow_dispatch' && (github.event.inputs.job == 'all' || github.event.inputs.job == 'weekly')) ||
+      github.event.schedule == '30 0 * * 0'
+    steps:
+      - name: Stock manager sync
+        run: |
+          echo "Running stock manager sync..."
+          curl -s --max-time 120 \
+            "https://thygenie.in/equity-invest/stock_manager.php?cron=1" \
+            | python3 -m json.tool || echo "Stock manager done"
+
+      - name: Weekly email report
+        run: |
+          curl -s --max-time 60 \
+            "https://thygenie.in/equity-invest/alerts.php?type=weekly&cron=1" \
+            | python3 -m json.tool || echo "Weekly report sent"
