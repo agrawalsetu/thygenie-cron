@@ -73,8 +73,13 @@ def post_batch(rows, task="import_json"):
 def main():
     csv_path = find_csv()
     if not csv_path:
-        print("ERROR: No CSV found. Commit a file to data/trendlyne_*.csv")
-        sys.exit(1)
+        event = os.environ.get("GITHUB_EVENT_NAME", "push")
+        if event == "workflow_dispatch":
+            print("ERROR: No CSV found. Commit a file to data/trendlyne_*.csv first.")
+            sys.exit(1)
+        else:
+            print("No CSV found in data/ — skipping ETL (push did not include a CSV)")
+            sys.exit(0)
 
     print(f"CSV file : {csv_path}")
     rows = parse_csv(csv_path)
@@ -130,4 +135,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
