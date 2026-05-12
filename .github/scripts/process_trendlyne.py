@@ -56,7 +56,7 @@ def parse_csv(path):
 
 def post_batch(rows, task="import_json"):
     payload = json.dumps({"key": API_KEY, "rows": rows}).encode("utf-8")
-    url     = f"{ENDPOINT}?task={task}"
+    url     = f"{ENDPOINT}?task={task}&key={API_KEY}"
     req     = urllib.request.Request(
         url,
         data    = payload,
