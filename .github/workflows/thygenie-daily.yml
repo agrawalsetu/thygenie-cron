@@ -30,6 +30,8 @@ on:
     - cron: '0 4 * * *'
     # 10:00 AM IST = 4:30 AM UTC (analyst refresh)
     - cron: '30 4 * * *'
+    # 10:45 AM IST = 5:15 AM UTC (AI analyst — after analyst refresh)
+    - cron: '15 5 * * *'
     # 4:00 PM IST = 10:30 AM UTC (data gather)
     - cron: '30 10 * * *'
     # 5:00 PM IST = 11:30 AM UTC (evening pipeline)
@@ -56,6 +58,7 @@ on:
           - all
           - sentiment
           - analyst
+          - ai-analyst
           - data-gather
           - evening
           - weekly
@@ -131,6 +134,22 @@ jobs:
             exit 1
           fi
           echo "Analyst refresh complete"
+
+  # ── 10:45am IST: AI analyst summaries (Claude + web search for every active pick) ──
+  ai-analyst:
+    runs-on: ubuntu-latest
+    if: |
+      (github.event_name == 'workflow_dispatch' && (github.event.inputs.job == 'all' || github.event.inputs.job == 'ai-analyst')) ||
+      github.event.schedule == '15 5 * * *'
+    steps:
+      - name: Generate AI summaries for active picks
+        run: |
+          echo "Generating AI summaries with web research (10:45 AM IST)..."
+          RESULT=$(curl -s --max-time 600 \
+            "https://thygenie.in/equity-invest/ai_analyst.php?task=run&max=50&key=thygenie_cron_2024" \
+            2>/dev/null || echo '{"ok":false,"error":"curl_failed"}')
+          echo "$RESULT" | python3 -m json.tool 2>/dev/null || echo "$RESULT"
+          echo "AI analyst complete"
 
   # ── 4pm IST: Data gather (Trendlyne + BSE + institutional + monitor) ──
   data-gather:
