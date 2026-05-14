@@ -120,7 +120,7 @@ jobs:
       - name: Fetch analyst recommendations
         run: |
           echo "Fetching analyst recommendations (10am IST)..."
-          RESULT=$(curl -s --max-time 120 \
+          RESULT=$(curl -s --max-time 300 \
             "https://thygenie.in/equity-invest/cron_setup.php?run=analyst&key=thygenie_cron_2024" \
             2>/dev/null || echo '{"success":false,"error":"curl_failed"}')
           echo "$RESULT" | python3 -m json.tool 2>/dev/null || echo "$RESULT"
