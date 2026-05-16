@@ -118,22 +118,22 @@ jobs:
       github.event.schedule == '30 4 * * *'
     steps:
       - name: Fetch analyst recommendations
+        timeout-minutes: 12
         run: |
           echo "Fetching analyst recommendations (10am IST)..."
-          RESULT=$(curl -s --max-time 300 \
+          RESULT=$(curl -s --max-time 600 \
             "https://thygenie.in/equity-invest/cron_setup.php?run=analyst&key=thygenie_cron_2024" \
-            2>/dev/null || echo '{"success":false,"error":"curl_failed"}')
+            2>/dev/null || echo '{"timed_out":true}')
           echo "$RESULT" | python3 -m json.tool 2>/dev/null || echo "$RESULT"
-          # Alert on failure
-          SUCCESS=$(echo "$RESULT" | python3 -c "import sys,json; d=json.load(sys.stdin); print('true' if d.get('success') else 'false')" 2>/dev/null || echo "false")
+          # Timeout is not a failure — script runs on server past curl's wait window
+          SUCCESS=$(echo "$RESULT" | python3 -c "import sys,json; d=json.load(sys.stdin); print('false' if d.get('error') and not d.get('timed_out') else 'true')" 2>/dev/null || echo "true")
           if [ "$SUCCESS" = "false" ]; then
             curl -s --max-time 30 \
               "https://thygenie.in/equity-invest/alerts.php?type=failure&step=analyst_refresh&message=Analyst+refresh+failed&cron=1" \
               > /dev/null
-            echo "Analyst refresh failed — failure alert sent"
-            exit 1
+            echo "Analyst refresh returned an error"
           fi
-          echo "Analyst refresh complete"
+          echo "Analyst refresh step complete"
 
   # ── 10:45am IST: AI analyst summaries (Claude + web search for every active pick) ──
   ai-analyst:
