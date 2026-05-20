@@ -228,9 +228,16 @@ jobs:
         run: |
           echo "Fetching prices (candidates + active recs, batches of 50)..."
           for offset in $(seq 0 50 2000); do
-            curl -s --max-time 60 \
+            RESULT=$(curl -s --max-time 180 \
               "https://thygenie.in/equity-invest/data_worker.php?batch=1&candidates_only=1&offset=${offset}&size=50&cron=1&key=thygenie_cron_2024" \
-              > /dev/null
+              || echo '{"error":"curl_failed_or_timeout"}')
+            FETCHED=$(echo "$RESULT" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('fetched',0))" 2>/dev/null || echo "0")
+            FAILED=$(echo "$RESULT" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('failed',0))" 2>/dev/null || echo "0")
+            echo "Offset ${offset}: fetched=${FETCHED} failed=${FAILED} | ${RESULT:0:120}"
+            if [ "$FETCHED" = "0" ] && [ "$FAILED" = "0" ] && [ "$offset" -gt "0" ]; then
+              echo "No more candidates at offset ${offset} — breaking early"
+              break
+            fi
             sleep 1
           done
           echo "Price fetch complete"
@@ -239,9 +246,15 @@ jobs:
         run: |
           echo "Scoring candidates (batches of 100)..."
           for offset in $(seq 0 100 2000); do
-            curl -s --max-time 90 \
+            RESULT=$(curl -s --max-time 180 \
               "https://thygenie.in/equity-invest/score_engine.php?offset=${offset}&size=100&cron=1&key=thygenie_cron_2024" \
-              > /dev/null
+              || echo '{"error":"curl_failed_or_timeout"}')
+            SCORED=$(echo "$RESULT" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('scored', d.get('count', 0)))" 2>/dev/null || echo "0")
+            echo "Offset ${offset}: scored=${SCORED} | ${RESULT:0:120}"
+            if [ "$SCORED" = "0" ] && [ "$offset" -gt "0" ]; then
+              echo "No more candidates to score at offset ${offset} — breaking early"
+              break
+            fi
             sleep 2
           done
           echo "Scoring complete"
