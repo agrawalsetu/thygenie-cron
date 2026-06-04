@@ -249,7 +249,20 @@ jobs:
             RESULT=$(curl -s --max-time 180 \
               "https://thygenie.in/equity-invest/score_engine.php?offset=${offset}&size=100&cron=1&key=thygenie_cron_2024" \
               || echo '{"error":"curl_failed_or_timeout"}')
-            SCORED=$(echo "$RESULT" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('scored', d.get('count', 0)))" 2>/dev/null || echo "0")
+            # R1 fix (F-SELF-09): a transient server fault returns HTML/redirect,
+            # not JSON. Previously json.load failed -> SCORED=0 -> the early-break
+            # below treated a SERVER ERROR as "scoring complete" and the whole run
+            # exited 0 (silent no-op — root cause of scored_today=0 on 2026-06-03).
+            # Detect non-JSON and fail loud instead of silently breaking.
+            if printf '%s' "$RESULT" | head -c 64 | grep -qiE '<!doctype|<html|<head|<body|<br'; then
+              echo "::error::score_engine returned HTML (not JSON) at offset ${offset} — server fault. Head: ${RESULT:0:160}"
+              exit 1
+            fi
+            SCORED=$(echo "$RESULT" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('scored', d.get('count', 0)))" 2>/dev/null || echo "PARSE_FAIL")
+            if [ "$SCORED" = "PARSE_FAIL" ]; then
+              echo "::error::score_engine response not parseable as JSON at offset ${offset}. Head: ${RESULT:0:160}"
+              exit 1
+            fi
             echo "Offset ${offset}: scored=${SCORED} | ${RESULT:0:120}"
             if [ "$SCORED" = "0" ] && [ "$offset" -gt "0" ]; then
               echo "No more candidates to score at offset ${offset} — breaking early"
