@@ -38,6 +38,8 @@ on:
     - cron: '30 11 * * *'
     # 6:00 AM IST Sunday = 12:30 AM UTC Sunday
     - cron: '30 0 * * 0'
+    # 8:41 AM IST weekdays = 3:11 AM UTC (pre-open news-catalyst — capture US overnight before the 9:15 open)
+    - cron: '11 3 * * 1-5'
 
   # ETL relay: triggers when a Trendlyne CSV is pushed to the data/ directory.
   # Workflow: download CSV from Trendlyne in browser → git push to data/ → this runs.
@@ -64,6 +66,7 @@ on:
           - weekly
           - backtest
           - etl
+          - news
 
 jobs:
 
@@ -93,6 +96,23 @@ jobs:
           curl -s --max-time 120 \
             "https://thygenie.in/equity-invest/candidate_refresh.php?cron=1&key=thygenie_cron_2024" \
             | python3 -m json.tool || echo "Candidate refresh done"
+
+  # ── 8:41am IST weekdays (pre-open): News-catalyst scan ──
+  # Captures US-overnight + India news, maps headlines to tickers, and seeds
+  # catalyst_events (boost) / regulatory_events (block/warn) which the score
+  # engine gates on — closing the catalyst-blindness gap. Unattended.
+  news-catalyst:
+    runs-on: ubuntu-latest
+    if: |
+      (github.event_name == 'workflow_dispatch' && (github.event.inputs.job == 'all' || github.event.inputs.job == 'news')) ||
+      github.event.schedule == '11 3 * * 1-5'
+    steps:
+      - name: Pre-open news-catalyst scan (seed catalyst/regulatory events)
+        run: |
+          echo "Running pre-open news-catalyst scan..."
+          curl -s --max-time 240 \
+            "https://thygenie.in/equity-invest/news_catalyst.php?cron=1&key=thygenie_cron_2024" \
+            | python3 -m json.tool || echo "News-catalyst done (timeout tolerated)"
 
   # ── 9:30am IST: Sentiment scraper (Reddit + RSS) ──
   sentiment-scraper:
