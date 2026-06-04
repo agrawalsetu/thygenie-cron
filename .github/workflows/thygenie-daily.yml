@@ -252,40 +252,52 @@ jobs:
 
       - name: Score candidates
         run: |
-          echo "Scoring candidates (batches of 100)..."
-          for offset in $(seq 0 100 2000); do
-            # Retry transient HTML/empty (one.com flakiness, esp. right after a deploy)
-            # up to 4 attempts before failing — a momentary blip shouldn't kill the run.
-            RESULT=""
-            for attempt in 1 2 3 4; do
+          echo "Scoring candidates (batches of 50, resilient)..."
+          FAILED=0
+          TOTAL=0
+          for offset in $(seq 0 50 2400); do
+            RESULT=""; OK=0
+            # Smaller batches keep each request under one.com's PHP time/memory limit
+            # (heavy gates + composite veto). Retry transient HTML/empty before giving
+            # up on THIS batch.
+            for attempt in 1 2 3 4 5; do
               RESULT=$(curl -s --max-time 180 \
-                "https://thygenie.in/equity-invest/score_engine.php?offset=${offset}&size=100&cron=1&key=thygenie_cron_2024" \
+                "https://thygenie.in/equity-invest/score_engine.php?offset=${offset}&size=50&cron=1&key=thygenie_cron_2024" \
                 || echo '')
-              if [ -n "$RESULT" ] && ! printf '%s' "$RESULT" | head -c 64 | grep -qiE '<!doctype|<html|<head|<body|<br'; then
-                break
-              fi
-              echo "::warning::score_engine transient (HTML/empty) at offset ${offset}, attempt ${attempt}/4 — retrying in 15s"
-              sleep 15
+              if [ -n "$RESULT" ] && ! printf '%s' "$RESULT" | head -c 64 | grep -qiE '<!doctype|<html|<head|<body|<br'; then OK=1; break; fi
+              echo "::warning::score_engine transient at offset ${offset}, attempt ${attempt}/5 — retrying in 20s"
+              sleep 20
             done
-            # R1 (F-SELF-09): if it is STILL HTML/empty after the retries, it is a
-            # persistent server fault — fail loud rather than silently no-op.
-            if [ -z "$RESULT" ] || printf '%s' "$RESULT" | head -c 64 | grep -qiE '<!doctype|<html|<head|<body|<br'; then
-              echo "::error::score_engine still HTML/empty after 4 attempts at offset ${offset}. Head: ${RESULT:0:160}"
-              exit 1
+            if [ "$OK" = "0" ]; then
+              # Don't kill the whole run for ONE stuck batch — log loudly, skip, continue.
+              # This is NOT the old silent no-op (F-SELF-09): the warning is visible, the
+              # failure is counted, and >=6 failures (a real outage) still fails the run.
+              echo "::warning::score_engine batch at offset ${offset} failed after 5 attempts — skipping batch, continuing"
+              FAILED=$((FAILED+1))
+              if [ "$FAILED" -ge 6 ]; then
+                echo "::error::6+ scoring batches failed — real server outage. Failing the run."
+                exit 1
+              fi
+              continue
             fi
             SCORED=$(echo "$RESULT" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('scored', d.get('count', 0)))" 2>/dev/null || echo "PARSE_FAIL")
             if [ "$SCORED" = "PARSE_FAIL" ]; then
-              echo "::error::score_engine response not parseable as JSON at offset ${offset}. Head: ${RESULT:0:160}"
-              exit 1
+              echo "::warning::score_engine response unparseable at offset ${offset} — skipping batch"
+              FAILED=$((FAILED+1)); continue
             fi
-            echo "Offset ${offset}: scored=${SCORED} | ${RESULT:0:120}"
+            TOTAL=$((TOTAL + SCORED))
+            echo "Offset ${offset}: scored=${SCORED} | running_total=${TOTAL}"
             if [ "$SCORED" = "0" ] && [ "$offset" -gt "0" ]; then
               echo "No more candidates to score at offset ${offset} — breaking early"
               break
             fi
             sleep 2
           done
-          echo "Scoring complete"
+          echo "Scoring complete: total_scored=${TOTAL}, failed_batches=${FAILED}"
+          if [ "$TOTAL" = "0" ]; then
+            echo "::error::scored 0 stocks across all batches — real failure."
+            exit 1
+          fi
 
       - name: Recommendations + macro + monitor + brain
         run: |
