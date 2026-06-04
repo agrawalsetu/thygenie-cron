@@ -228,9 +228,17 @@ jobs:
         run: |
           echo "Fetching prices (candidates + active recs, batches of 50)..."
           for offset in $(seq 0 50 2000); do
-            RESULT=$(curl -s --max-time 180 \
-              "https://thygenie.in/equity-invest/data_worker.php?batch=1&candidates_only=1&offset=${offset}&size=50&cron=1&key=thygenie_cron_2024" \
-              || echo '{"error":"curl_failed_or_timeout"}')
+            # Retry transient HTML/empty before reading the batch, so a momentary blip
+            # doesn't leave fetched=0/failed=0 and trip the early-break below.
+            RESULT=""
+            for attempt in 1 2 3; do
+              RESULT=$(curl -s --max-time 180 \
+                "https://thygenie.in/equity-invest/data_worker.php?batch=1&candidates_only=1&offset=${offset}&size=50&cron=1&key=thygenie_cron_2024" \
+                || echo '')
+              if [ -n "$RESULT" ] && ! printf '%s' "$RESULT" | head -c 64 | grep -qiE '<!doctype|<html|<head|<body'; then break; fi
+              echo "::warning::data_worker transient at offset ${offset}, attempt ${attempt}/3 — retrying in 12s"
+              sleep 12
+            done
             FETCHED=$(echo "$RESULT" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('fetched',0))" 2>/dev/null || echo "0")
             FAILED=$(echo "$RESULT" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('failed',0))" 2>/dev/null || echo "0")
             echo "Offset ${offset}: fetched=${FETCHED} failed=${FAILED} | ${RESULT:0:120}"
@@ -246,16 +254,23 @@ jobs:
         run: |
           echo "Scoring candidates (batches of 100)..."
           for offset in $(seq 0 100 2000); do
-            RESULT=$(curl -s --max-time 180 \
-              "https://thygenie.in/equity-invest/score_engine.php?offset=${offset}&size=100&cron=1&key=thygenie_cron_2024" \
-              || echo '{"error":"curl_failed_or_timeout"}')
-            # R1 fix (F-SELF-09): a transient server fault returns HTML/redirect,
-            # not JSON. Previously json.load failed -> SCORED=0 -> the early-break
-            # below treated a SERVER ERROR as "scoring complete" and the whole run
-            # exited 0 (silent no-op — root cause of scored_today=0 on 2026-06-03).
-            # Detect non-JSON and fail loud instead of silently breaking.
-            if printf '%s' "$RESULT" | head -c 64 | grep -qiE '<!doctype|<html|<head|<body|<br'; then
-              echo "::error::score_engine returned HTML (not JSON) at offset ${offset} — server fault. Head: ${RESULT:0:160}"
+            # Retry transient HTML/empty (one.com flakiness, esp. right after a deploy)
+            # up to 4 attempts before failing — a momentary blip shouldn't kill the run.
+            RESULT=""
+            for attempt in 1 2 3 4; do
+              RESULT=$(curl -s --max-time 180 \
+                "https://thygenie.in/equity-invest/score_engine.php?offset=${offset}&size=100&cron=1&key=thygenie_cron_2024" \
+                || echo '')
+              if [ -n "$RESULT" ] && ! printf '%s' "$RESULT" | head -c 64 | grep -qiE '<!doctype|<html|<head|<body|<br'; then
+                break
+              fi
+              echo "::warning::score_engine transient (HTML/empty) at offset ${offset}, attempt ${attempt}/4 — retrying in 15s"
+              sleep 15
+            done
+            # R1 (F-SELF-09): if it is STILL HTML/empty after the retries, it is a
+            # persistent server fault — fail loud rather than silently no-op.
+            if [ -z "$RESULT" ] || printf '%s' "$RESULT" | head -c 64 | grep -qiE '<!doctype|<html|<head|<body|<br'; then
+              echo "::error::score_engine still HTML/empty after 4 attempts at offset ${offset}. Head: ${RESULT:0:160}"
               exit 1
             fi
             SCORED=$(echo "$RESULT" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('scored', d.get('count', 0)))" 2>/dev/null || echo "PARSE_FAIL")
@@ -275,16 +290,21 @@ jobs:
       - name: Recommendations + macro + monitor + brain
         run: |
           echo "Running post-scoring pipeline..."
-          curl -s --max-time 60 \
+          # These scripts keep running server-side past curl's wait window, so a curl
+          # timeout here is NOT a pipeline failure. Tolerate timeouts (|| echo) on every
+          # call and give the heavy steps (monitor over the full book, brain) headroom —
+          # a bare "curl > /dev/null" with no || would errexit-kill the step on timeout
+          # (exit 28), which was the recurring tail failure.
+          curl -s --max-time 180 \
             "https://thygenie.in/equity-invest/recommend.php?cron=1&key=thygenie_cron_2024" \
-            | python3 -m json.tool || echo "Recommend done"
-          curl -s --max-time 60 \
-            "https://thygenie.in/equity-invest/fetch_macro.php?cron=1&key=thygenie_cron_2024" > /dev/null
-          curl -s --max-time 60 \
-            "https://thygenie.in/equity-invest/monitor.php?cron=1&key=thygenie_cron_2024" > /dev/null
+            | python3 -m json.tool || echo "Recommend done (or running server-side)"
           curl -s --max-time 120 \
+            "https://thygenie.in/equity-invest/fetch_macro.php?cron=1&key=thygenie_cron_2024" > /dev/null 2>&1 || echo "Macro done (timeout tolerated)"
+          curl -s --max-time 240 \
+            "https://thygenie.in/equity-invest/monitor.php?cron=1&key=thygenie_cron_2024" > /dev/null 2>&1 || echo "Monitor done (timeout tolerated — server continues)"
+          curl -s --max-time 300 \
             "https://thygenie.in/equity-invest/brain.php?cron=1&key=thygenie_cron_2024" \
-            | python3 -m json.tool || echo "Brain done"
+            | python3 -m json.tool || echo "Brain done (timeout tolerated — server continues)"
           echo "Post-scoring pipeline complete"
 
       - name: Rolling backtest (next untested period)
