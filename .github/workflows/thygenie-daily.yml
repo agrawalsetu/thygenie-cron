@@ -272,17 +272,19 @@ jobs:
 
       - name: Score candidates
         run: |
-          echo "Scoring candidates (batches of 50, resilient)..."
+          echo "Scoring candidates (batches of 25, resilient)..."
           FAILED=0
           TOTAL=0
-          for offset in $(seq 0 50 2400); do
+          for offset in $(seq 0 25 2400); do
             RESULT=""; OK=0
             # Smaller batches keep each request under one.com's PHP time/memory limit
-            # (heavy gates + composite veto). Retry transient HTML/empty before giving
-            # up on THIS batch.
+            # (heavy gates + composite veto). 50/batch began timing out once the
+            # moat-aware intrinsic-value gate joined the veto path — each request now
+            # does more work per stock, so 25 keeps it well under the host timeout.
+            # Retry transient HTML/empty before giving up on THIS batch.
             for attempt in 1 2 3 4 5; do
               RESULT=$(curl -s --max-time 180 \
-                "https://thygenie.in/equity-invest/score_engine.php?offset=${offset}&size=50&cron=1&key=thygenie_cron_2024" \
+                "https://thygenie.in/equity-invest/score_engine.php?offset=${offset}&size=25&cron=1&key=thygenie_cron_2024" \
                 || echo '')
               if [ -n "$RESULT" ] && ! printf '%s' "$RESULT" | head -c 64 | grep -qiE '<!doctype|<html|<head|<body|<br'; then OK=1; break; fi
               echo "::warning::score_engine transient at offset ${offset}, attempt ${attempt}/5 — retrying in 20s"
