@@ -230,6 +230,13 @@ jobs:
             "https://thygenie.in/equity-invest/sector_rotation_update.php?cron=1&key=thygenie_cron_2024" \
             | python3 -m json.tool || echo "Sector rotation done"
 
+      - name: Sector health overlay (breadth + 60d RS -> sector_health)
+        run: |
+          echo "Updating sector health overlay (was unscheduled -> stale; feeds the sector regime modifier in scoring)..."
+          curl -s --max-time 120 \
+            "https://thygenie.in/equity-invest/sector_health_update.php?cron=1&key=thygenie_cron_2024" \
+            | python3 -m json.tool || echo "Sector health done"
+
       - name: Livemint earnings commentary
         run: |
           echo "Fetching Livemint earnings commentary (requires subscription cookie)..."
