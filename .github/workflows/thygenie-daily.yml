@@ -26,18 +26,22 @@ name: Thygenie Automation
 
 on:
   schedule:
-    # 9:30 AM IST = 4:00 AM UTC (sentiment — after prices settle)
-    - cron: '0 4 * * *'
-    # 10:00 AM IST = 4:30 AM UTC (analyst refresh)
-    - cron: '30 4 * * *'
+    # NOTE: times use ODD minutes (not :00/:30). GitHub Actions delays/drops
+    # scheduled runs most at the top and half of the hour, so we shift off those
+    # boundaries to cut dropped runs. (External cron-job.org redundancy hits the
+    # same idempotent endpoints as a second safety net.)
+    # 9:37 AM IST = 4:07 AM UTC (sentiment — after prices settle)
+    - cron: '7 4 * * *'
+    # 10:07 AM IST = 4:37 AM UTC (analyst refresh)
+    - cron: '37 4 * * *'
     # 10:45 AM IST = 5:15 AM UTC (AI analyst — after analyst refresh)
     - cron: '15 5 * * *'
-    # 4:00 PM IST = 10:30 AM UTC (data gather)
-    - cron: '30 10 * * *'
-    # 5:00 PM IST = 11:30 AM UTC (evening pipeline)
-    - cron: '30 11 * * *'
-    # 6:00 AM IST Sunday = 12:30 AM UTC Sunday
-    - cron: '30 0 * * 0'
+    # 4:07 PM IST = 10:37 AM UTC (data gather)
+    - cron: '37 10 * * *'
+    # 5:11 PM IST = 11:41 AM UTC (evening pipeline)
+    - cron: '41 11 * * *'
+    # 6:07 AM IST Sunday = 12:37 AM UTC Sunday
+    - cron: '37 0 * * 0'
     # 8:41 AM IST weekdays = 3:11 AM UTC (pre-open news-catalyst — capture US overnight before the 9:15 open)
     - cron: '11 3 * * 1-5'
 
@@ -119,7 +123,7 @@ jobs:
     runs-on: ubuntu-latest
     if: |
       (github.event_name == 'workflow_dispatch' && (github.event.inputs.job == 'all' || github.event.inputs.job == 'sentiment')) ||
-      github.event.schedule == '0 4 * * *'
+      github.event.schedule == '7 4 * * *'
     steps:
       - name: Scrape Reddit + RSS sentiment
         run: |
@@ -135,7 +139,7 @@ jobs:
     runs-on: ubuntu-latest
     if: |
       (github.event_name == 'workflow_dispatch' && (github.event.inputs.job == 'all' || github.event.inputs.job == 'analyst')) ||
-      github.event.schedule == '30 4 * * *'
+      github.event.schedule == '37 4 * * *'
     steps:
       - name: Fetch analyst recommendations
         timeout-minutes: 12
@@ -176,7 +180,7 @@ jobs:
     runs-on: ubuntu-latest
     if: |
       (github.event_name == 'workflow_dispatch' && (github.event.inputs.job == 'all' || github.event.inputs.job == 'data-gather')) ||
-      github.event.schedule == '30 10 * * *'
+      github.event.schedule == '37 10 * * *'
     steps:
       - name: Trendlyne widget auto-fetch
         run: |
@@ -214,7 +218,7 @@ jobs:
     runs-on: ubuntu-latest
     if: |
       (github.event_name == 'workflow_dispatch' && (github.event.inputs.job == 'all' || github.event.inputs.job == 'evening' || github.event.inputs.job == 'backtest')) ||
-      github.event.schedule == '30 11 * * *'
+      github.event.schedule == '41 11 * * *'
     steps:
       - name: Candidate pre-filter refresh
         run: |
@@ -409,7 +413,7 @@ jobs:
     runs-on: ubuntu-latest
     if: |
       (github.event_name == 'workflow_dispatch' && (github.event.inputs.job == 'all' || github.event.inputs.job == 'weekly')) ||
-      github.event.schedule == '30 0 * * 0'
+      github.event.schedule == '37 0 * * 0'
     steps:
       - name: Stock manager sync
         run: |
