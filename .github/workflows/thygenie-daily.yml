@@ -255,6 +255,11 @@ jobs:
             "https://thygenie.in/equity-invest/stock_manager.php?cron=1&mode=daily&key=thygenie_cron_2024" \
             | python3 -m json.tool || echo "Maintenance done"
 
+      - name: Ingest dataworker mailbox (Trendlyne deals/events + Google Alerts)
+        run: |
+          echo "Ingesting dataworker@ mailbox: dividend ex-dates -> corp_actions, results board-meetings -> earnings_calendar, material announcements + regulatory alerts -> inbound_signals staging (alphaalert breakouts skipped per value mandate). Runs before earnings-calendar refresh + scoring so entry gates see fresh data..."
+          curl -s --max-time 180 \n            "https://thygenie.in/equity-invest/email_ingest.php?task=ingest&cron=1&key=thygenie_cron_2024" \n            | python3 -m json.tool || echo "Email ingest done"
+
       - name: Refresh earnings calendar (board meetings -> days_to_results)
         run: |
           echo "Refreshing earnings calendar (NSE/BSE board meetings + surprise compute) so score_engine entry gates + monitor exit blackouts run on fresh days_to_results..."
