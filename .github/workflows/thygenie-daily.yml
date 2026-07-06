@@ -98,7 +98,7 @@ jobs:
         run: |
           echo "Refreshing candidate pre-filter after data import..."
           curl -s --max-time 120 \
-            "https://thygenie.in/equity-invest/candidate_refresh.php?cron=1&key=thygenie_cron_2024" \
+            "https://thygenie.in/equity-invest/candidate_refresh.php?cron=1&key=${{ secrets.CRON_KEY }}" \
             | python3 -m json.tool || echo "Candidate refresh done"
 
   # ── 8:41am IST weekdays (pre-open): News-catalyst scan ──
@@ -115,7 +115,7 @@ jobs:
         run: |
           echo "Running pre-open news-catalyst scan..."
           curl -s --max-time 240 \
-            "https://thygenie.in/equity-invest/news_catalyst.php?cron=1&key=thygenie_cron_2024" \
+            "https://thygenie.in/equity-invest/news_catalyst.php?cron=1&key=${{ secrets.CRON_KEY }}" \
             | python3 -m json.tool || echo "News-catalyst done (timeout tolerated)"
 
   # ── 9:30am IST: Sentiment scraper (Reddit + RSS) ──
@@ -129,7 +129,7 @@ jobs:
         run: |
           echo "Running sentiment scraper (9:30 AM IST)..."
           RESULT=$(curl -s --max-time 180 \
-            "https://thygenie.in/equity-invest/cron_setup.php?run=sentiment&key=thygenie_cron_2024" \
+            "https://thygenie.in/equity-invest/cron_setup.php?run=sentiment&key=${{ secrets.CRON_KEY }}" \
             2>/dev/null || echo '{"success":false,"error":"curl_failed"}')
           echo "$RESULT" | python3 -m json.tool 2>/dev/null || echo "$RESULT"
           echo "Sentiment scrape complete"
@@ -146,14 +146,14 @@ jobs:
         run: |
           echo "Fetching analyst recommendations (10am IST)..."
           RESULT=$(curl -s --max-time 600 \
-            "https://thygenie.in/equity-invest/cron_setup.php?run=analyst&key=thygenie_cron_2024" \
+            "https://thygenie.in/equity-invest/cron_setup.php?run=analyst&key=${{ secrets.CRON_KEY }}" \
             2>/dev/null || echo '{"timed_out":true}')
           echo "$RESULT" | python3 -m json.tool 2>/dev/null || echo "$RESULT"
           # Timeout is not a failure — script runs on server past curl's wait window
           SUCCESS=$(echo "$RESULT" | python3 -c "import sys,json; d=json.load(sys.stdin); print('false' if d.get('error') and not d.get('timed_out') else 'true')" 2>/dev/null || echo "true")
           if [ "$SUCCESS" = "false" ]; then
             curl -s --max-time 30 \
-              "https://thygenie.in/equity-invest/alerts.php?type=failure&step=analyst_refresh&message=Analyst+refresh+failed&cron=1&key=thygenie_cron_2024" \
+              "https://thygenie.in/equity-invest/alerts.php?type=failure&step=analyst_refresh&message=Analyst+refresh+failed&cron=1&key=${{ secrets.CRON_KEY }}" \
               > /dev/null
             echo "Analyst refresh returned an error"
           fi
@@ -170,7 +170,7 @@ jobs:
         run: |
           echo "Generating AI summaries with web research (10:45 AM IST)..."
           RESULT=$(curl -s --max-time 600 \
-            "https://thygenie.in/equity-invest/ai_analyst.php?task=run&max=50&key=thygenie_cron_2024" \
+            "https://thygenie.in/equity-invest/ai_analyst.php?task=run&max=50&key=${{ secrets.CRON_KEY }}" \
             2>/dev/null || echo '{"ok":false,"error":"curl_failed"}')
           echo "$RESULT" | python3 -m json.tool 2>/dev/null || echo "$RESULT"
           echo "AI analyst complete"
@@ -187,7 +187,7 @@ jobs:
           echo "Fetching Trendlyne widget data..."
           for offset in 0 12 24 36 48 60 72 84 96 108 120 132 144 156 168 180 192 204 216 228 240 252 264 276 288; do
             curl -s --max-time 30 \
-              "https://thygenie.in/equity-invest/trendlyne_auto.php?task=fetch&offset=${offset}&size=4&cron=1&key=thygenie_cron_2024" \
+              "https://thygenie.in/equity-invest/trendlyne_auto.php?task=fetch&offset=${offset}&size=4&cron=1&key=${{ secrets.CRON_KEY }}" \
               > /dev/null
             sleep 2
           done
@@ -197,20 +197,20 @@ jobs:
         run: |
           echo "Fetching BSE announcements..."
           curl -s --max-time 60 \
-            "https://thygenie.in/equity-invest/bse_announcements.php?task=fetch&cron=1&key=thygenie_cron_2024" \
+            "https://thygenie.in/equity-invest/bse_announcements.php?task=fetch&cron=1&key=${{ secrets.CRON_KEY }}" \
             | python3 -m json.tool || echo "BSE fetch done"
 
       - name: Institutional holdings update
         run: |
           echo "Fetching institutional holdings..."
           curl -s --max-time 90 \
-            "https://thygenie.in/equity-invest/trendlyne_fetcher.php?task=institutional&cron=1&key=thygenie_cron_2024" \
+            "https://thygenie.in/equity-invest/trendlyne_fetcher.php?task=institutional&cron=1&key=${{ secrets.CRON_KEY }}" \
             | python3 -m json.tool || echo "Institutional fetch done"
 
       - name: Monitor active picks
         run: |
           curl -s --max-time 60 \
-            "https://thygenie.in/equity-invest/monitor.php?cron=1&key=thygenie_cron_2024" \
+            "https://thygenie.in/equity-invest/monitor.php?cron=1&key=${{ secrets.CRON_KEY }}" \
             | python3 -m json.tool || echo "Monitor done"
 
   # ── 5pm IST: Evening pipeline — prices → scoring → recs → brain → backtest → alerts ──
@@ -224,47 +224,47 @@ jobs:
         run: |
           echo "Refreshing candidate pre-filter (reduces ~2,366→~700 stocks for scoring)..."
           curl -s --max-time 120 \
-            "https://thygenie.in/equity-invest/candidate_refresh.php?cron=1&key=thygenie_cron_2024" \
+            "https://thygenie.in/equity-invest/candidate_refresh.php?cron=1&key=${{ secrets.CRON_KEY }}" \
             | python3 -m json.tool || echo "Candidate refresh done"
 
       - name: Sector rotation update
         run: |
           echo "Updating sector smart money flow..."
           curl -s --max-time 60 \
-            "https://thygenie.in/equity-invest/sector_rotation_update.php?cron=1&key=thygenie_cron_2024" \
+            "https://thygenie.in/equity-invest/sector_rotation_update.php?cron=1&key=${{ secrets.CRON_KEY }}" \
             | python3 -m json.tool || echo "Sector rotation done"
 
       - name: Sector health overlay (breadth + 60d RS -> sector_health)
         run: |
           echo "Updating sector health overlay (was unscheduled -> stale; feeds the sector regime modifier in scoring)..."
           curl -s --max-time 120 \
-            "https://thygenie.in/equity-invest/sector_health_update.php?cron=1&key=thygenie_cron_2024" \
+            "https://thygenie.in/equity-invest/sector_health_update.php?cron=1&key=${{ secrets.CRON_KEY }}" \
             | python3 -m json.tool || echo "Sector health done"
 
       - name: Livemint earnings commentary
         run: |
           echo "Fetching Livemint earnings commentary (requires subscription cookie)..."
           curl -s --max-time 120 \
-            "https://thygenie.in/equity-invest/mint_fetcher.php?cron=1&key=thygenie_cron_2024" \
+            "https://thygenie.in/equity-invest/mint_fetcher.php?cron=1&key=${{ secrets.CRON_KEY }}" \
             | python3 -m json.tool || echo "Mint fetcher done (cookie may not be set)"
 
       - name: Daily maintenance
         run: |
           echo "Running daily maintenance (NSE sync + reclassify + lessons)..."
           curl -s --max-time 120 \
-            "https://thygenie.in/equity-invest/stock_manager.php?cron=1&mode=daily&key=thygenie_cron_2024" \
+            "https://thygenie.in/equity-invest/stock_manager.php?cron=1&mode=daily&key=${{ secrets.CRON_KEY }}" \
             | python3 -m json.tool || echo "Maintenance done"
 
       - name: Ingest dataworker mailbox (Trendlyne deals/events + Google Alerts)
         run: |
           echo "Ingesting dataworker@ mailbox: dividend ex-dates -> corp_actions, results board-meetings -> earnings_calendar, material announcements + regulatory alerts -> inbound_signals staging (alphaalert breakouts skipped per value mandate). Runs before earnings-calendar refresh + scoring so entry gates see fresh data..."
-          curl -s --max-time 180 \n            "https://thygenie.in/equity-invest/email_ingest.php?task=ingest&cron=1&key=thygenie_cron_2024" \n            | python3 -m json.tool || echo "Email ingest done"
+          curl -s --max-time 180 \n            "https://thygenie.in/equity-invest/email_ingest.php?task=ingest&cron=1&key=${{ secrets.CRON_KEY }}" \n            | python3 -m json.tool || echo "Email ingest done"
 
       - name: Refresh earnings calendar (board meetings -> days_to_results)
         run: |
           echo "Refreshing earnings calendar (NSE/BSE board meetings + surprise compute) so score_engine entry gates + monitor exit blackouts run on fresh days_to_results..."
           curl -s --max-time 180 \
-            "https://thygenie.in/equity-invest/earnings_calendar.php?task=fetch&cron=1&key=thygenie_cron_2024" \
+            "https://thygenie.in/equity-invest/earnings_calendar.php?task=fetch&cron=1&key=${{ secrets.CRON_KEY }}" \
             | python3 -m json.tool || echo "Earnings calendar fetch done"
 
       - name: Fetch prices for candidates + active recommendations
@@ -276,7 +276,7 @@ jobs:
             RESULT=""
             for attempt in 1 2 3; do
               RESULT=$(curl -s --max-time 180 \
-                "https://thygenie.in/equity-invest/data_worker.php?batch=1&candidates_only=1&offset=${offset}&size=50&cron=1&key=thygenie_cron_2024" \
+                "https://thygenie.in/equity-invest/data_worker.php?batch=1&candidates_only=1&offset=${offset}&size=50&cron=1&key=${{ secrets.CRON_KEY }}" \
                 || echo '')
               if [ -n "$RESULT" ] && ! printf '%s' "$RESULT" | head -c 64 | grep -qiE '<!doctype|<html|<head|<body'; then break; fi
               echo "::warning::data_worker transient at offset ${offset}, attempt ${attempt}/3 — retrying in 12s"
@@ -308,7 +308,7 @@ jobs:
             # Retry transient HTML/empty before giving up on THIS batch.
             for attempt in 1 2 3 4 5; do
               RESULT=$(curl -s --max-time 180 \
-                "https://thygenie.in/equity-invest/score_engine.php?offset=${offset}&size=100&cron=1&key=thygenie_cron_2024" \
+                "https://thygenie.in/equity-invest/score_engine.php?offset=${offset}&size=100&cron=1&key=${{ secrets.CRON_KEY }}" \
                 || echo '')
               if [ -n "$RESULT" ] && ! printf '%s' "$RESULT" | head -c 64 | grep -qiE '<!doctype|<html|<head|<body|<br'; then OK=1; break; fi
               echo "::warning::score_engine transient at offset ${offset}, attempt ${attempt}/5 — retrying in 20s"
@@ -354,14 +354,14 @@ jobs:
           # a bare "curl > /dev/null" with no || would errexit-kill the step on timeout
           # (exit 28), which was the recurring tail failure.
           curl -s --max-time 180 \
-            "https://thygenie.in/equity-invest/recommend.php?cron=1&key=thygenie_cron_2024" \
+            "https://thygenie.in/equity-invest/recommend.php?cron=1&key=${{ secrets.CRON_KEY }}" \
             | python3 -m json.tool || echo "Recommend done (or running server-side)"
           curl -s --max-time 120 \
-            "https://thygenie.in/equity-invest/fetch_macro.php?cron=1&key=thygenie_cron_2024" > /dev/null 2>&1 || echo "Macro done (timeout tolerated)"
+            "https://thygenie.in/equity-invest/fetch_macro.php?cron=1&key=${{ secrets.CRON_KEY }}" > /dev/null 2>&1 || echo "Macro done (timeout tolerated)"
           curl -s --max-time 240 \
-            "https://thygenie.in/equity-invest/monitor.php?cron=1&key=thygenie_cron_2024" > /dev/null 2>&1 || echo "Monitor done (timeout tolerated — server continues)"
+            "https://thygenie.in/equity-invest/monitor.php?cron=1&key=${{ secrets.CRON_KEY }}" > /dev/null 2>&1 || echo "Monitor done (timeout tolerated — server continues)"
           curl -s --max-time 300 \
-            "https://thygenie.in/equity-invest/brain.php?cron=1&key=thygenie_cron_2024" \
+            "https://thygenie.in/equity-invest/brain.php?cron=1&key=${{ secrets.CRON_KEY }}" \
             | python3 -m json.tool || echo "Brain done (timeout tolerated — server continues)"
           echo "Post-scoring pipeline complete"
 
@@ -369,7 +369,7 @@ jobs:
         run: |
           echo "Finding next untested backtest period..."
           PERIOD=$(curl -s --max-time 30 \
-            "https://thygenie.in/equity-invest/backtest.php?task=next_period&cron=1&key=thygenie_cron_2024" \
+            "https://thygenie.in/equity-invest/backtest.php?task=next_period&cron=1&key=${{ secrets.CRON_KEY }}" \
             | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('period_start') or '')" \
             2>/dev/null || echo "")
           if [ -z "$PERIOD" ]; then
@@ -379,7 +379,7 @@ jobs:
             for SEG in large mid small; do
               echo "  Running segment: $SEG"
               curl -s --max-time 180 \
-                "https://thygenie.in/equity-invest/backtest.php?task=run&start=${PERIOD}&segment=${SEG}&size=9999&cron=1&key=thygenie_cron_2024" \
+                "https://thygenie.in/equity-invest/backtest.php?task=run&start=${PERIOD}&segment=${SEG}&size=9999&cron=1&key=${{ secrets.CRON_KEY }}" \
                 | python3 -m json.tool || echo "  Segment ${SEG} done"
               sleep 5
             done
@@ -390,7 +390,7 @@ jobs:
         run: |
           echo "Running health check..."
           HEALTH=$(curl -s --max-time 30 \
-            "https://thygenie.in/equity-invest/cron_setup.php?run=health&key=thygenie_cron_2024" \
+            "https://thygenie.in/equity-invest/cron_setup.php?run=health&key=${{ secrets.CRON_KEY }}" \
             2>/dev/null || echo '{"healthy":false,"issues":["health_endpoint_unreachable"]}')
           echo "$HEALTH" | python3 -m json.tool 2>/dev/null || echo "$HEALTH"
           HEALTHY=$(echo "$HEALTH" | python3 -c "import sys,json; d=json.load(sys.stdin); print('true' if d.get('healthy') else 'false')" 2>/dev/null || echo "false")
@@ -410,7 +410,7 @@ jobs:
         run: |
           echo "Sending daily email summary..."
           curl -s --max-time 60 \
-            "https://thygenie.in/equity-invest/alerts.php?type=daily&cron=1&key=thygenie_cron_2024" \
+            "https://thygenie.in/equity-invest/alerts.php?type=daily&cron=1&key=${{ secrets.CRON_KEY }}" \
             | python3 -m json.tool || echo "Daily email sent"
 
   # ── Sunday 6am IST: Weekly maintenance ──
@@ -424,11 +424,11 @@ jobs:
         run: |
           echo "Running stock manager sync..."
           curl -s --max-time 120 \
-            "https://thygenie.in/equity-invest/stock_manager.php?cron=1&key=thygenie_cron_2024" \
+            "https://thygenie.in/equity-invest/stock_manager.php?cron=1&key=${{ secrets.CRON_KEY }}" \
             | python3 -m json.tool || echo "Stock manager done"
 
       - name: Weekly email report
         run: |
           curl -s --max-time 60 \
-            "https://thygenie.in/equity-invest/alerts.php?type=weekly&cron=1&key=thygenie_cron_2024" \
+            "https://thygenie.in/equity-invest/alerts.php?type=weekly&cron=1&key=${{ secrets.CRON_KEY }}" \
             | python3 -m json.tool || echo "Weekly report sent"

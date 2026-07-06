@@ -14,7 +14,7 @@ Usage (GitHub Actions):
 
 Environment variables:
   THYGENIE_SITE_URL  — override base URL (default: https://thygenie.in/equity-invest)
-  THYGENIE_API_KEY   — override API key (default: thygenie_cron_2024)
+  THYGENIE_API_KEY   — override API key (default: <rotated-see-secret>)
 """
 
 import csv
@@ -27,7 +27,7 @@ import urllib.request
 import urllib.error
 
 SITE_URL  = os.environ.get("THYGENIE_SITE_URL", "https://thygenie.in/equity-invest")
-API_KEY   = os.environ.get("THYGENIE_API_KEY",  "thygenie_cron_2024")
+API_KEY   = os.environ.get("THYGENIE_API_KEY",  "<rotated-see-secret>")
 ENDPOINT  = f"{SITE_URL}/trendlyne_fetcher.php"
 BATCH_SZ  = 500   # rows per POST — keeps request body under ~500KB
 
