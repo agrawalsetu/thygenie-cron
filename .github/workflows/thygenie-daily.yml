@@ -308,7 +308,7 @@ jobs:
             # Retry transient HTML/empty before giving up on THIS batch.
             for attempt in 1 2 3 4 5; do
               RESULT=$(curl -s --max-time 180 \
-                "https://thygenie.in/equity-invest/score_engine.php?offset=${offset}&size=100&cron=1&key=${{ secrets.CRON_KEY }}" \
+                "https://thygenie.in/equity-invest/score_engine.php?offset=${offset}&size=100&all=1&cron=1&key=${{ secrets.CRON_KEY }}" \
                 || echo '')
               if [ -n "$RESULT" ] && ! printf '%s' "$RESULT" | head -c 64 | grep -qiE '<!doctype|<html|<head|<body|<br'; then OK=1; break; fi
               echo "::warning::score_engine transient at offset ${offset}, attempt ${attempt}/5 — retrying in 20s"
