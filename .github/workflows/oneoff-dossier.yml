@@ -1,0 +1,25 @@
+name: Oneoff Dossier Post
+# Manual relay: POSTs a committed dossier JSON to stock_manager.php?set_dossier=1
+# using the repo CRON_KEY secret (the app key never leaves GitHub). Trigger via
+# Actions -> "Oneoff Dossier Post" -> Run workflow, or: gh workflow run oneoff-dossier.yml
+on:
+  workflow_dispatch:
+    inputs:
+      file:
+        description: 'Path to the dossier JSON in this repo'
+        required: false
+        default: 'data/dossiers_2026-07-19.json'
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: POST dossiers to set_dossier
+        run: |
+          F="${{ github.event.inputs.file }}"
+          echo "posting $F -> stock_manager.php?set_dossier=1"
+          curl -s --max-time 120 -X POST \
+            --data-binary @"$F" \
+            -H "Content-Type: application/json" \
+            "https://thygenie.in/equity-invest/stock_manager.php?set_dossier=1&key=${{ secrets.CRON_KEY }}" \
+            | python3 -m json.tool || echo "post finished (non-JSON or timeout tolerated)"
