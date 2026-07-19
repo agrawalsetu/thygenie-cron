@@ -1,4 +1,0 @@
-{
-  "symbol": "UNIDT",
-  "reason": "Live NSE stock (United Drilling Tools, INE961D01019) falsely deactivated ~2026-06-25 by a partial/incomplete NSE-sync CSV; still actively trading (Q4 FY26 results, Vedanta order Jul-2026, present in Trendlyne pack @214.93). Daily price batch skipped it (is_active=1 filter) -> price froze -> stale-ghost on an active rec. Reactivating so daily fetch resumes."
-}
