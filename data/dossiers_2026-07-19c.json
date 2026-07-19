@@ -1,0 +1,14 @@
+{"dossiers":[
+{
+ "symbol":"SHILCTECH",
+ "financial_spine":"Shilchar Technologies (distribution / power / furnace transformers; ~48% export book, renewables + data-center exposure). HIGH-quality, self-funded compounder — the rare flagged name where quality is genuinely high. FY26 revenue +4.6% (growth PAUSED after a 50-60% CAGR); Q4 FY26 revenue -34.6% YoY but ~70-80% traceable ONE-OFFs (Rs35-40cr Middle East shipments DEFERRED not cancelled, shipped April + a ~100% transformer-oil cost spike on fixed-price legacy orders), ~20-30% genuine capacity ceiling. ROCE 51%, EBITDA margin 29.2% (only ~-40bps FY; the -968bps is Q4-vs-Q4 operating de-leverage on a low-volume quarter).",
+ "drivers":"Transformer demand (power / renewables / data-centre); ~48% export book; capacity utilisation (maxed 90-95% until a new line commissions Apr-2027); oil/copper input costs on fixed-price orders.",
+ "dependencies":"Capacity ceiling until Apr-2027 (caps FY27 growth); export logistics (Middle East + US-tariff risk on the ~48% export book); transformer-oil/copper input-cost pass-through.",
+ "forensics":"Earnings GENUINE + cash-backed: OCF/PAT 1.21 (FY26 CFO Rs192cr / PAT Rs158cr), and receivables FELL ~Rs75cr YoY (no channel-stuffing — why CFO surged 4.8x). Net CASH ~Rs246cr, debt-free (0.0x net-debt/EBITDA); FCF Rs169cr; ROCE 51% / ROIC ~31%. Governance clean. This is a VALUATION + near-term-growth-durability de-rate, NOT an earnings-quality or governance one.",
+ "valuation":{"fair_value_low":3600,"fair_value_high":4100,"cmp":4414,"mos_pct":-15,"method":"~32x trailing / ~31x FY27E / 10.3x book for a company with FY27 EPS guided ~FLAT (D&B Rs141 vs FY26 Rs138) — capacity maxed till Apr-2027; the multiple discounts the FY28 step-up today with no cushion","earnings_base":"cyclical"},
+ "prediction":"30d underperform >=2 pts (no catalyst pre-Q1); 60d Q1FY27 (~early-Aug) is the pivot — base rev rebounds ~Rs170-190cr on deferred-ME catch-up but OPM <=28% -> flat-to-underperform; 90d underperform >=3 pts, de-rate toward Rs3,800-4,100. Hard-falsifier: Q1-Q2FY27 revenue >Rs190cr/qtr AND EBITDA margin >=29% AND FY27 guide raised toward Rs900cr.",
+ "spine_numbers":{"net_debt_cr":-246,"net_debt_to_ebitda":0.0,"ocf_cr":192,"fcf_cr":169,"ocf_to_pat":1.21,"roce_pct":51,"roic_pct":31,"ebitda_margin_pct":29.2,"ebitda_margin_yoy_bps":-40,"earnings_base":"cyclical"},
+ "confidence":"med",
+ "source":"deep_teardown_2026-07-19"
+}
+]}
