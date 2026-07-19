@@ -1,0 +1,26 @@
+{"dossiers":[
+{
+ "symbol":"ADSL",
+ "financial_spine":"Allied Digital Services (IT infrastructure / global managed services + master system integration). ROCE 7% / ROE ~6% — sub-cost-of-capital every recent year. EBITDA margin 6% reported (-200bps YoY, -800bps since FY22), producing an OPERATING LOSS in Q4 FY26 (op-profit -Rs10.1cr; PBT-ex-other-income -Rs18.65cr). FY26 PAT Rs36cr (+10%) is BELOW FY24's Rs46cr — weak-and-flat, not depressed-recovering; the Q2 '+33%' optic was other-income-driven.",
+ "drivers":"Managed-services / MSI contract wins; other income; forex. No structural margin lever visible.",
+ "dependencies":"Enterprise IT-services demand; large receivable + unbilled-revenue collection cycle.",
+ "forensics":"QUALIFIED FY26 AUDIT (Singhi & Co.) is the seed-missed kill-shot: auditor COULD NOT VERIFY Rs136.98cr PP&E/intangibles + Rs43.91cr inventory; flagged under-provisioning on Rs27.42cr >3yr receivables + Rs24.16cr >5yr unbilled; and a Section 186(7) related-party (interest-free subsidiary loan) BREACH. ~Rs232cr (~38% of net worth / ~6.5x PAT) under a cloud. OCF Rs102cr looks strong but FCF ~-Rs73cr / net cash flow -Rs54cr once the ~Rs36cr non-cash ECL add-back + payables-stretch are removed. Receivable days 121 (up from 85). Leverage NOT the issue (net-cash-neutral, 0% pledge, CRISIL BBB+); MarketsMojo independently SELL vs sell-side Rs229-234 Buy.",
+ "valuation":{"fair_value_low":95,"fair_value_high":125,"cmp":120,"mos_pct":-8,"method":"~16-18x P/E optically cheap but cheap-for-a-reason; sell-side Rs229-234 is the over-rate anchor","earnings_base":"audit_qualified"},
+ "prediction":"30d in-line to -5%; 60d -0 to -8% (Q1FY27 print the swing); 90d base -5% to -12%. Hard-falsifier: Q1FY27 reported OPM >=12% + clean audit + OCF/PAT >1x with positive FCF.",
+ "spine_numbers":{"net_debt_cr":0,"ocf_cr":102,"fcf_cr":-73,"ocf_to_pat":2.83,"roce_pct":7,"ebitda_margin_pct":6,"ebitda_margin_yoy_bps":-200,"receivable_days":121,"earnings_base":"audit_qualified"},
+ "confidence":"high",
+ "source":"deep_teardown_2026-07-19"
+},
+{
+ "symbol":"SEDEMAC",
+ "financial_spine":"Sedemac Mechatronics (engine-management / mechatronics electronics for 2W + small engines). A WONDERFUL BUSINESS AT A TERRIBLE PRICE — the over-rate is VALUATION, not quality. +120% FY26 PAT is a one-time DELEVERAGING artifact (finance cost Rs38.4cr FY24 -> Rs9cr FY26, off a depressed FY24 base of Rs5.88cr PAT), NOT organic doubling. ROCE ~40%, EBITDA margin 20-21% (+~200bps). Cash IS backed (OCF/PAT >1x every year FY23-26) — the usual accrual-mirage kill-shot FAILS here.",
+ "drivers":"Engine-management content-per-vehicle; TVS 2W volumes; EV-product bets; operating leverage.",
+ "dependencies":"SINGLE-CUSTOMER CLIFF: TVS Motor ~80.5% of FY25 revenue, top-10 ~98%, with NO minimum-purchase commitment (DRHP-confirmed). A TVS order cut / tech-shift / in-sourcing could halve revenue with no contractual floor.",
+ "forensics":"Cash-backed (OCF/PAT 1.23) and near net-cash (net-debt/EBITDA ~0.2-0.3x, D/E 0.17) — REFUTES the widely-repeated '4.8x debt/EBITDA' bear point, which is a DATA ERROR (revenue misread as debt). 100%-OFS IPO (no capital to the company; PE funds A91/Xponentia partial-exited) -> post-listing the stock DOUBLED on multiple-expansion while PAT did not. The company's own corrigendum quietly restated its diversification metric the WRONG way (FY26 concentration 49% -> 58%). One watch-item: ~Rs118cr capitalised intangibles (Rs68.93cr + Rs49.31cr WIP) with no public amortisation/impairment-policy disclosure + EV-bet risk.",
+ "valuation":{"fair_value_low":1200,"fair_value_high":1950,"cmp":2712,"mos_pct":-42,"method":"~116x P/E / ~26.7x P/B = ~2x both its own 62.6x IPO multiple and the auto-component peer median","earnings_base":"base_effect"},
+ "prediction":"30d in-line to -6%; 60d -0 to -10% (Q1FY27 financial print + ~Sep PE lock-in expiry are the swings); 90d base -6% to -15%. Hard-falsifier: FY27 organic revenue+PAT growth >40% WITH TVS concentration below ~60% AND OCF/PAT staying >1x.",
+ "spine_numbers":{"net_debt_to_ebitda":0.25,"ocf_to_pat":1.23,"roce_pct":40,"ebitda_margin_pct":20.5,"ebitda_margin_yoy_bps":200,"earnings_base":"base_effect"},
+ "confidence":"high",
+ "source":"deep_teardown_2026-07-19"
+}
+]}
