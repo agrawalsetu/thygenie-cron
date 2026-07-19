@@ -1,0 +1,30 @@
+name: Oneoff POST (keyed)
+# Generic manual relay: POSTs a committed JSON body to ANY keyed equity-invest
+# endpoint using the repo CRON_KEY secret (the app key never leaves GitHub).
+# The `endpoint` input MUST already contain a '?' (its own query) — we append
+# '&key=...'. Trigger: gh workflow run oneoff-post.yml -f endpoint='stock_manager.php?resolve_rec=1' -f file=data/x.json
+on:
+  workflow_dispatch:
+    inputs:
+      endpoint:
+        description: 'Endpoint path + query WITHOUT key, e.g. stock_manager.php?resolve_rec=1'
+        required: true
+      file:
+        description: 'Path to the JSON body file in this repo'
+        required: false
+        default: 'data/oneoff.json'
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: POST body to endpoint
+        run: |
+          EP="${{ github.event.inputs.endpoint }}"
+          F="${{ github.event.inputs.file }}"
+          echo "posting $F -> $EP"
+          curl -s --max-time 120 -X POST \
+            --data-binary @"$F" \
+            -H "Content-Type: application/json" \
+            "https://thygenie.in/equity-invest/${EP}&key=${{ secrets.CRON_KEY }}" \
+            | python3 -m json.tool || echo "post finished (non-JSON or timeout tolerated)"
