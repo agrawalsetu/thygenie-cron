@@ -1,26 +1,29 @@
 # ============================================================
-#  THYGENIE — Measurement Writers (decoupled post-evening job)
+#  THYGENIE — Measurement + orphaned-writer catch-up (decoupled post-evening job)
 #  File: .github/workflows/measurement-writers.yml
 #
 #  WHY THIS EXISTS
 #  The nightly "Thygenie Automation" evening-pipeline runs
 #  prices -> scoring -> recommend -> monitor -> brain, but it NEVER
-#  calls cron_setup.php?run=daily, and the per-engine measurement /
-#  accrual writers are wired ONLY into that run=daily branch. So they
-#  never run nightly and their time-series silently froze (ic_history
-#  stuck at 2026-07-23 for 8+ days; the composite-IC reweight roadmap
-#  is blocked on this series accruing).
+#  calls cron_setup.php?run=daily, and a whole tail of writers is wired
+#  ONLY into that run=daily branch — so they never ran nightly:
+#    - measurement/accrual ledgers: lesson_ic, ic_history,
+#      gate_attribution, riskadj, loop_audit  (ic_history was frozen
+#      at 2026-07-23 for 8+ days; the composite-IC reweight roadmap is
+#      blocked on this series accruing)
+#    - book/risk maintenance: apply_rec_stance (de-stale soured BUYs),
+#      degross_advisor (risk-off state), split-phantom guard
 #
-#  This is OPTION B: a SEPARATE lightweight workflow that runs the
-#  measurement writers AFTER the evening pipeline has finalized the
+#  This runs them ~90 min AFTER the evening pipeline has finalized the
 #  day's scores/prices/closures — decoupled from the fragile,
 #  throttle-prone price/score batch loop so a flaky pipeline day can't
-#  take IC accrual down with it.
+#  take the accrual down with it. Ordered to mirror cron_setup run=daily.
 #
-#  All endpoints are IDEMPOTENT (upsert keyed by as_of_date), so a
-#  late run, a re-run, or an overlap with a manual seed is harmless.
-#  Timeouts are tolerated: the PHP keeps running server-side past
-#  curl's wait window, so a curl 28 is not a failure.
+#  All endpoints are IDEMPOTENT (upsert keyed by as_of_date / today), so
+#  a late run, a re-run, or an overlap with a manual seed is harmless.
+#  Every step is best-effort (|| echo): a single curl timeout or parse
+#  blip never fails the job. Timeouts are tolerated — the PHP keeps
+#  running server-side past curl's wait window.
 # ============================================================
 
 name: Thygenie Measurement Writers
@@ -39,8 +42,50 @@ jobs:
   measurement-writers:
     runs-on: ubuntu-latest
     steps:
-      # lesson_ic first (reads stock_scores_history; feeds brain's lesson
-      # lifecycle — harmless to re-run, brain already ran in the evening job).
+      # ── book/risk maintenance (run first, mirroring cron_setup order) ──
+
+      # apply_rec_stance: re-stance the active book so a soured pick
+      # (composite decayed below the buy-line) stops showing as a stale BUY.
+      # Informational — no position closes here (that stays with monitor).
+      - name: Rec stance (de-stale soured BUYs)
+        run: |
+          echo "apply_rec_stance: refresh active-rec stance..."
+          curl -s --max-time 120 \
+            "https://thygenie.in/equity-invest/stock_manager.php?apply_rec_stance=1&cron=1&key=${{ secrets.CRON_KEY }}" \
+            | python3 -m json.tool || echo "RecStance done (timeout tolerated)"
+
+      # split-phantom guard: nightly tripwire for UNADJUSTED corp actions
+      # (a rec whose entry predates a split/bonus reads as a phantom -75%
+      # "hold"). teardown_candidates flags them read-only; alert if any surface.
+      - name: Split-phantom guard (unadjusted corp-action tripwire)
+        run: |
+          echo "split-phantom guard: scanning active book..."
+          TC=$(curl -s --max-time 120 \
+            "https://thygenie.in/equity-invest/teardown_candidates.php?key=${{ secrets.CRON_KEY }}" || echo '{}')
+          N=$(printf '%s' "$TC" | python3 -c "import sys,json; d=json.load(sys.stdin); print(int((d.get('summary') or {}).get('active_split_phantom_suspects',0) or 0))" 2>/dev/null || echo 0)
+          echo "active_split_phantom_suspects=$N"
+          if [ "${N:-0}" -gt 0 ] 2>/dev/null; then
+            MSG=$(printf '%s' "$TC" | python3 -c "import sys,json; d=json.load(sys.stdin); rows=(d.get('split_phantoms') or [])[:10]; print('; '.join('%s %s%% ~%s:1'%(r.get('symbol'),r.get('drawdown_pct'),r.get('split_multiple')) for r in rows))" 2>/dev/null || echo "see teardown_candidates.php")
+            curl -s --max-time 30 --get \
+              --data-urlencode "message=$N split-phantom suspect(s) — likely unadjusted corp actions; resolve as corporate_action: $MSG" \
+              "https://thygenie.in/equity-invest/alerts.php?type=failure&step=split_phantom_guard&cron=1&key=${{ secrets.CRON_KEY }}" \
+              > /dev/null && echo "alert sent for $N suspect(s)" || echo "alert attempt done"
+          else
+            echo "clean — no split-phantom suspects"
+          fi
+
+      # degross_advisor: advance the risk-off hysteresis state (throttle_state)
+      # and emit the de-gross recommendation. SHADOW — no book writes.
+      - name: De-gross advisor (advance risk-off state, shadow)
+        run: |
+          echo "degross_advisor: advance risk-off state (shadow)..."
+          curl -s --max-time 90 \
+            "https://thygenie.in/equity-invest/degross_advisor.php?cron=1&key=${{ secrets.CRON_KEY }}" \
+            | python3 -m json.tool || echo "DeGross done (timeout tolerated)"
+
+      # ── measurement / accrual ledgers ──
+
+      # lesson_ic: forward-validated lesson efficacy (reads stock_scores_history).
       - name: Lesson IC (forward-validated lesson efficacy)
         run: |
           echo "lesson_ic: forward-validated lesson efficacy ledger..."
