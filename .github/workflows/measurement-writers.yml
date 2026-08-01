@@ -1,0 +1,83 @@
+# ============================================================
+#  THYGENIE — Measurement Writers (decoupled post-evening job)
+#  File: .github/workflows/measurement-writers.yml
+#
+#  WHY THIS EXISTS
+#  The nightly "Thygenie Automation" evening-pipeline runs
+#  prices -> scoring -> recommend -> monitor -> brain, but it NEVER
+#  calls cron_setup.php?run=daily, and the per-engine measurement /
+#  accrual writers are wired ONLY into that run=daily branch. So they
+#  never run nightly and their time-series silently froze (ic_history
+#  stuck at 2026-07-23 for 8+ days; the composite-IC reweight roadmap
+#  is blocked on this series accruing).
+#
+#  This is OPTION B: a SEPARATE lightweight workflow that runs the
+#  measurement writers AFTER the evening pipeline has finalized the
+#  day's scores/prices/closures — decoupled from the fragile,
+#  throttle-prone price/score batch loop so a flaky pipeline day can't
+#  take IC accrual down with it.
+#
+#  All endpoints are IDEMPOTENT (upsert keyed by as_of_date), so a
+#  late run, a re-run, or an overlap with a manual seed is harmless.
+#  Timeouts are tolerated: the PHP keeps running server-side past
+#  curl's wait window, so a curl 28 is not a failure.
+# ============================================================
+
+name: Thygenie Measurement Writers
+
+on:
+  schedule:
+    # 18:41 IST = 13:11 UTC — ~90 min after the 17:11 IST evening pipeline
+    # start (pipeline runs ~12-15 min). The wide buffer absorbs GitHub
+    # Actions schedule drift and the occasional slow/rerun evening.
+    # Odd minute, off the hour, per the automation repo's drift convention.
+    - cron: '11 13 * * *'
+  # Manual trigger for testing / backfill.
+  workflow_dispatch: {}
+
+jobs:
+  measurement-writers:
+    runs-on: ubuntu-latest
+    steps:
+      # lesson_ic first (reads stock_scores_history; feeds brain's lesson
+      # lifecycle — harmless to re-run, brain already ran in the evening job).
+      - name: Lesson IC (forward-validated lesson efficacy)
+        run: |
+          echo "lesson_ic: forward-validated lesson efficacy ledger..."
+          curl -s --max-time 180 \
+            "https://thygenie.in/equity-invest/lesson_ic.php?cron=1&key=${{ secrets.CRON_KEY }}" \
+            | python3 -m json.tool || echo "LessonIC done (timeout tolerated)"
+
+      # ic_history: per-engine forward + resolved IC snapshot -> ic_history.
+      # THE primary series the reweight roadmap is blocked on.
+      - name: IC history (per-engine forward + resolved IC snapshot)
+        run: |
+          echo "ic_history: per-engine IC snapshot..."
+          curl -s --max-time 180 \
+            "https://thygenie.in/equity-invest/ic_history.php?run=1&cron=1&key=${{ secrets.CRON_KEY }}" \
+            | python3 -m json.tool || echo "ICHistory done (timeout tolerated)"
+
+      # gate_attribution: per-gate realised market-neutral lift -> gate_attribution_log.
+      - name: Gate attribution (per-gate realised lift snapshot)
+        run: |
+          echo "gate_attribution: per-gate realised lift snapshot..."
+          curl -s --max-time 180 \
+            "https://thygenie.in/equity-invest/gate_attribution.php?run=1&cron=1&key=${{ secrets.CRON_KEY }}" \
+            | python3 -m json.tool || echo "GateAttrib done (timeout tolerated)"
+
+      # riskadj: risk-adjusted return measurement (Sharpe/Sortino/IR) -> riskadj_metrics.
+      - name: Risk-adjusted metrics (Sharpe / Sortino / IR ledger)
+        run: |
+          echo "riskadj: risk-adjusted metrics ledger..."
+          curl -s --max-time 180 \
+            "https://thygenie.in/equity-invest/riskadj.php?cron=1&key=${{ secrets.CRON_KEY }}" \
+            | python3 -m json.tool || echo "RiskAdj done (timeout tolerated)"
+
+      # loop_audit LAST: aggregates the day's outputs into the autonomous-loop
+      # metric ledger (reads ic_history / riskadj written just above).
+      - name: Loop audit (autonomous-loop metric ledger)
+        run: |
+          echo "loop_audit: autonomous-loop metric ledger..."
+          curl -s --max-time 120 \
+            "https://thygenie.in/equity-invest/loop_audit.php?cron=1&key=${{ secrets.CRON_KEY }}" \
+            | python3 -m json.tool || echo "LoopAudit done (timeout tolerated)"
