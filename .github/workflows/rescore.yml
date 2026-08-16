@@ -1,0 +1,46 @@
+name: Rescore (score-only)
+# Manual full-universe re-score after a Trendlyne upload. Loops score_engine ONLY
+# (no recommend / monitor), so it reflects freshly uploaded fundamentals in
+# stock_scores WITHOUT originating recommendations or growing the book.
+# Trigger: gh workflow run rescore.yml -R agrawalsetu/thygenie-cron
+on:
+  workflow_dispatch: {}
+jobs:
+  rescore:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Score all active stocks in batches of 100 (no origination)
+        run: |
+          set -u
+          BASE="https://thygenie.in/equity-invest"
+          KEY="${{ secrets.CRON_KEY }}"
+          SIZE=100
+          fetch() { curl -s --max-time 300 "$BASE/score_engine.php?offset=$1&size=$SIZE&cron=1&key=$KEY"; }
+          R=$(fetch 0)
+          TOTAL=$(echo "$R" | jq -r '.total // 0' 2>/dev/null || echo 0)
+          S0=$(echo "$R" | jq -r '.scored // "?"' 2>/dev/null || echo "?")
+          echo "batch 0: scored=$S0 total=$TOTAL"
+          if [ "$TOTAL" -le 0 ]; then echo "no total returned — aborting"; echo "raw: $(echo "$R" | head -c 200)"; exit 1; fi
+          TOTSCORED=0; [ "$S0" != "?" ] && TOTSCORED=$S0
+          OFF=$SIZE; FAILS=0
+          while [ "$OFF" -lt "$TOTAL" ]; do
+            R=$(fetch "$OFF")
+            SC=$(echo "$R" | jq -r '.scored // empty' 2>/dev/null || echo "")
+            if [ -z "$SC" ]; then
+              # throttle / non-JSON — retry once after a longer pause
+              sleep 6
+              R=$(fetch "$OFF")
+              SC=$(echo "$R" | jq -r '.scored // empty' 2>/dev/null || echo "")
+            fi
+            if [ -z "$SC" ]; then
+              FAILS=$((FAILS+1))
+              echo "batch $OFF: FAILED (throttle/non-JSON) #$FAILS: $(echo "$R" | head -c 80)"
+            else
+              echo "batch $OFF: scored=$SC"
+              TOTSCORED=$((TOTSCORED + SC))
+            fi
+            OFF=$((OFF+SIZE))
+            sleep 2
+          done
+          echo "=== rescore complete: ~$TOTSCORED stocks scored (offsets 0..$((OFF-SIZE)), universe $TOTAL, failed batches $FAILS) ==="
+          if [ "$FAILS" -gt 0 ]; then echo "note: $FAILS batch(es) threw — those ~$((FAILS*SIZE)) stocks keep their prior scores; re-run or let the nightly fill them."; fi
